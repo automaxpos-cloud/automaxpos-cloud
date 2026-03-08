@@ -9,7 +9,8 @@
     "seed": "node scripts/seed-backend-device.js",
     "rotate-key": "node scripts/rotate-backend-key.js",
     "test-license": "node scripts/test-license-verify.js",
-    "migrate": "node scripts/run-migrations.js"
+    "migrate": "node scripts/run-migrations.js",
+    "report:daily": "node scripts/daily-summary-report.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",

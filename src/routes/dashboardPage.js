@@ -124,6 +124,7 @@ router.get("/", (req, res) => {
     <div class="muted">Synced sales + backend health</div>
     <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="btn" id="nav-dashboard" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Dashboard</button>
+      <button class="btn" id="nav-monitoring" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Live Monitoring</button>
       <button class="btn" id="nav-users" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Users</button>
       <button class="btn" id="export_pdf_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--accent);color:#fff;">Export PDF</button>
       <button class="btn" id="export_xlsx_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Export Excel</button>
@@ -347,6 +348,36 @@ router.get("/", (req, res) => {
       </div>
       <div id="sync-empty" class="muted" style="margin-top:8px;display:none;">Awaiting first sync.</div>
     </div>
+    </section>
+
+    </section>
+
+    <section id="monitoring-section" style="display:none;">
+      <div class="section" style="margin-top:0;">
+        <h2>Live Monitoring</h2>
+        <div class="card" style="display:flex;gap:16px;flex-wrap:wrap;">
+          <div>
+            <div class="muted">Status</div>
+            <div id="monitoring-status" style="margin-top:4px;">Awaiting data</div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <div id="monitoring-empty" class="empty" style="display:none;">No register activity yet.</div>
+        <table id="monitoring-table">
+          <thead>
+            <tr>
+              <th>Register</th>
+              <th>Cashier</th>
+              <th>Branch</th>
+              <th>Last Activity</th>
+              <th>Last Sale</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="monitoring-body"></tbody>
+        </table>
+      </div>
     </section>
 
     <section id="users-section" style="display:none;">
@@ -930,9 +961,48 @@ router.get("/", (req, res) => {
         tr.innerHTML = "<td>" + (r.register_name || "-") + "</td>" +
           "<td>" + (r.cashier_name || "-") + "</td>" +
           "<td>" + (r.branch_name || "-") + "</td>" +
-          "<td>" + (r.last_seen_at || "-") + "</td>" +
+          "<td>" + (r.last_seen_at ? formatAgo(r.last_seen_at) : "-") + "</td>" +
           "<td><span class=\\\"status " + statusClass + "\\\">" + status + "</span></td>";
         body.appendChild(tr);
+      }
+    }
+
+    async function loadLiveMonitoring() {
+      debug("loadLiveMonitoring");
+      const filters = currentFilters();
+      if (!filters.business_id) return;
+      const res = await fetch("/api/cloud/dashboard/active-registers" + (qs(filters) ? "?" + qs(filters) : ""), { headers: authHeaders() });
+      const data = await res.json();
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      setTableEmpty("monitoring-table", "monitoring-empty", rows);
+      const body = document.getElementById("monitoring-body");
+      if (!body) return;
+      body.innerHTML = "";
+      let online = 0;
+      let idle = 0;
+      let offline = 0;
+      for (const r of rows) {
+        const status = String(r.status || "OFFLINE").toUpperCase();
+        if (status === "ONLINE") online += 1;
+        else if (status === "IDLE") idle += 1;
+        else offline += 1;
+        const statusClass = status === "ONLINE" ? "online" : (status === "IDLE" ? "idle" : "offline");
+        const tr = document.createElement("tr");
+        tr.innerHTML = "<td>" + (r.register_name || "-") + "</td>" +
+          "<td>" + (r.cashier_name || "-") + "</td>" +
+          "<td>" + (r.branch_name || "-") + "</td>" +
+          "<td>" + (r.last_seen_at ? formatAgo(r.last_seen_at) : "-") + "</td>" +
+          "<td>" + (r.last_sale_at ? formatAgo(r.last_sale_at) : "-") + "</td>" +
+          "<td><span class=\\\"status " + statusClass + "\\\">" + status + "</span></td>";
+        body.appendChild(tr);
+      }
+      const statusEl = byId("monitoring-status");
+      if (statusEl) {
+        if (!rows.length) {
+          statusEl.textContent = "Awaiting register activity";
+        } else {
+          statusEl.textContent = "Online: " + online + " | Idle: " + idle + " | Offline: " + offline;
+        }
       }
     }
 
@@ -1134,8 +1204,10 @@ router.get("/", (req, res) => {
 
     function showSection(name) {
       const dash = byId("dashboard-section");
+      const monitoring = byId("monitoring-section");
       const users = byId("users-section");
       if (dash) dash.style.display = name === "dashboard" ? "block" : "none";
+      if (monitoring) monitoring.style.display = name === "monitoring" ? "block" : "none";
       if (users) users.style.display = name === "users" ? "block" : "none";
     }
 
@@ -1369,6 +1441,7 @@ router.get("/", (req, res) => {
           loadReturnsSummary(),
           loadActiveCashiers(),
           loadActiveRegisters(),
+          loadLiveMonitoring(),
           loadLowStock(),
           loadBranchComparison(),
           loadSales(),
@@ -1406,6 +1479,7 @@ router.get("/", (req, res) => {
           loadReturnsSummary(),
           loadActiveCashiers(),
           loadActiveRegisters(),
+          loadLiveMonitoring(),
           loadLowStock(),
           loadBranchComparison(),
           loadSales(),
@@ -1416,6 +1490,10 @@ router.get("/", (req, res) => {
         updateFilterContext();
       });
       bind("nav-dashboard", "click", () => showSection("dashboard"));
+      bind("nav-monitoring", "click", async () => {
+        showSection("monitoring");
+        await loadLiveMonitoring();
+      });
       bind("nav-users", "click", async () => {
         showSection("users");
         await loadUserBusinesses();
@@ -1445,6 +1523,7 @@ router.get("/", (req, res) => {
         loadReturnsSummary(),
         loadActiveCashiers(),
         loadActiveRegisters(),
+        loadLiveMonitoring(),
         loadLowStock(),
         loadBranchComparison(),
         loadSales(),
