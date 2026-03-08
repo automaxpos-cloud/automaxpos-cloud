@@ -1424,6 +1424,24 @@ router.get("/", (req, res) => {
 
     let refreshTimer = null;
 
+    async function refreshAll() {
+      await Promise.all([
+        loadSummary(),
+        loadMonthSales(),
+        loadTodaySales(),
+        loadReturnsSummary(),
+        loadActiveCashiers(),
+        loadActiveRegisters(),
+        loadLiveMonitoring(),
+        loadLowStock(),
+        loadBranchComparison(),
+        loadSales(),
+        loadReturns(),
+        loadBackends(),
+        loadSyncHealth()
+      ]);
+    }
+
     function startAutoRefresh() {
       if (refreshTimer) return;
       refreshTimer = setInterval(async () => {
@@ -1434,22 +1452,8 @@ router.get("/", (req, res) => {
           return;
         }
         updateExpiryIndicator();
-        await Promise.all([
-          loadSummary(),
-          loadMonthSales(),
-          loadTodaySales(),
-          loadReturnsSummary(),
-          loadActiveCashiers(),
-          loadActiveRegisters(),
-          loadLiveMonitoring(),
-          loadLowStock(),
-          loadBranchComparison(),
-          loadSales(),
-          loadReturns(),
-          loadBackends(),
-          loadSyncHealth()
-        ]);
-      }, 30000);
+        await refreshAll();
+      }, 5000);
     }
 
     async function init() {
@@ -1472,21 +1476,7 @@ router.get("/", (req, res) => {
         updateRangeInputs();
       });
       bind("apply_filters", "click", async () => {
-        await Promise.all([
-          loadSummary(),
-          loadMonthSales(),
-          loadTodaySales(),
-          loadReturnsSummary(),
-          loadActiveCashiers(),
-          loadActiveRegisters(),
-          loadLiveMonitoring(),
-          loadLowStock(),
-          loadBranchComparison(),
-          loadSales(),
-          loadReturns(),
-          loadBackends(),
-          loadSyncHealth()
-        ]);
+        await refreshAll();
         updateFilterContext();
       });
       bind("nav-dashboard", "click", () => showSection("dashboard"));
@@ -1516,26 +1506,22 @@ router.get("/", (req, res) => {
       updateFilterContext();
       updateAuthContext();
       updateExpiryIndicator();
-      await Promise.all([
-        loadSummary(),
-        loadMonthSales(),
-        loadTodaySales(),
-        loadReturnsSummary(),
-        loadActiveCashiers(),
-        loadActiveRegisters(),
-        loadLiveMonitoring(),
-        loadLowStock(),
-        loadBranchComparison(),
-        loadSales(),
-        loadReturns(),
-        loadBackends(),
-        loadSyncHealth()
-      ]);
+      await refreshAll();
       startAutoRefresh();
     }
     window.addEventListener("error", (e) => {
       console.error("[DASH] runtime error:", e.message);
       showInitError("Dashboard failed to initialize. Check console.");
+    });
+    window.addEventListener("focus", () => {
+      const token = localStorage.getItem("cloud_admin_token");
+      if (token) refreshAll().catch(() => {});
+    });
+    document.addEventListener("visibilitychange", () => {
+      const token = localStorage.getItem("cloud_admin_token");
+      if (document.visibilityState === "visible" && token) {
+        refreshAll().catch(() => {});
+      }
     });
     init().catch((e) => {
       console.error("[DASH] init failed:", e && e.message ? e.message : e);
