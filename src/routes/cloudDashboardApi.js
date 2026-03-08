@@ -452,7 +452,14 @@ router.get("/inventory/summary", authUser, async (req, res) => {
     }));
     const item_count = rows.length;
     const total_stock = rows.reduce((sum, r) => sum + Number(r.stock || 0), 0);
-    return res.json({ rows, item_count, total_stock });
+    let total_items_qty = 0;
+    let total_kgs_qty = 0;
+    for (const r of rows) {
+      const isWeight = String(r.product_type || "").toUpperCase() === "WEIGHT";
+      if (isWeight) total_kgs_qty += Number(r.stock || 0);
+      else total_items_qty += Number(r.stock || 0);
+    }
+    return res.json({ rows, item_count, total_stock, total_items_qty, total_kgs_qty });
   } catch (err) {
     console.error("CLOUD DASHBOARD INVENTORY SUMMARY ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });

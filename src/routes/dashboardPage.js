@@ -196,6 +196,7 @@ router.get("/", (req, res) => {
       <div class="card">
         <h3>Total Stock</h3>
         <div class="value" id="stock-total">--</div>
+        <div class="muted" id="stock-breakdown" style="margin-top:6px;">Items: -- | Kgs: --</div>
       </div>
     </div>
     <div id="summary-empty" class="muted" style="margin-top:8px;display:none;">No synced sales yet. Awaiting first sync.</div>
@@ -270,20 +271,10 @@ router.get("/", (req, res) => {
     <div class="section">
       <h2>Inventory Snapshot</h2>
       <div class="grid cards">
-        <div class="card"><h3>Total Items</h3><div class="value" id="inventory-count">--</div></div>
-        <div class="card"><h3>Total Stock</h3><div class="value" id="inventory-total">--</div></div>
+        <div class="card"><h3>Total Items (Qty)</h3><div class="value" id="inventory-items-qty">--</div></div>
+        <div class="card"><h3>Total Kgs (Qty)</h3><div class="value" id="inventory-kgs-qty">--</div></div>
       </div>
       <div id="inventory-empty" class="empty" style="display:none;">No inventory snapshot yet.</div>
-      <table id="inventory-table">
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>Stock</th>
-            <th>Reorder Level</th>
-          </tr>
-        </thead>
-        <tbody id="inventory-body"></tbody>
-      </table>
     </div>
 
     <div class="section">
@@ -529,7 +520,9 @@ router.get("/", (req, res) => {
       "month-returns",
       "month-net",
       "inventory-total",
-      "stock-total"
+      "stock-total",
+      "inventory-items-qty",
+      "inventory-kgs-qty"
     ]);
     const INT_IDS = new Set([
       "today-count",
@@ -1060,26 +1053,29 @@ router.get("/", (req, res) => {
         setValue("inventory-count", null);
         setValue("inventory-total", null);
         setValue("stock-total", null);
+        setValue("inventory-items-qty", null);
+        setValue("inventory-kgs-qty", null);
+        const stockBreakdown = byId("stock-breakdown");
+        if (stockBreakdown) stockBreakdown.textContent = "Items: -- | Kgs: --";
         return;
       }
       const data = await res.json();
       const rows = Array.isArray(data.rows) ? data.rows : [];
-      setTableEmpty("inventory-table", "inventory-empty", rows);
       const itemCount = Number(data.item_count ?? rows.length ?? 0);
       const totalStock = Number(data.total_stock ?? 0);
+      const itemsQty = Number(data.total_items_qty ?? 0);
+      const kgsQty = Number(data.total_kgs_qty ?? 0);
       setValue("inventory-count", itemCount);
       setValue("inventory-total", totalStock);
       setValue("stock-total", totalStock);
-      const body = document.getElementById("inventory-body");
-      if (!body) return;
-      body.innerHTML = "";
-      for (const r of rows) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = "<td>" + (r.product_name || "-") + "</td>" +
-          "<td>" + (r.stock ?? 0) + "</td>" +
-          "<td>" + (r.reorder_level ?? "-") + "</td>";
-        body.appendChild(tr);
+      setValue("inventory-items-qty", itemsQty);
+      setValue("inventory-kgs-qty", kgsQty);
+      const stockBreakdown = byId("stock-breakdown");
+      if (stockBreakdown) {
+        stockBreakdown.textContent = "Items: " + itemsQty.toFixed(2) + " | Kgs: " + kgsQty.toFixed(2);
       }
+      const invEmpty = byId("inventory-empty");
+      if (invEmpty) invEmpty.style.display = itemCount ? "none" : "block";
     }
 
     async function loadBranchComparison() {
