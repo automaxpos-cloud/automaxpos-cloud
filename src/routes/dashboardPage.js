@@ -193,6 +193,11 @@ router.get("/", (req, res) => {
       <div class="card"><h3>Net Sales This Month</h3><div class="value" id="sales-month">--</div></div>
       <div class="card"><h3>Active Branches</h3><div class="value" id="active-branches">--</div></div>
       <div class="card"><h3>Active Backends</h3><div class="value" id="active-backends">--</div></div>
+      <div class="card">
+        <h3>Total Stock</h3>
+        <div class="value" id="stock-items">--</div>
+        <div class="muted" id="stock-kgs" style="margin-top:6px;">Items: -- | Kgs: --</div>
+      </div>
     </div>
     <div id="summary-empty" class="muted" style="margin-top:8px;display:none;">No synced sales yet. Awaiting first sync.</div>
 
@@ -1054,13 +1059,34 @@ router.get("/", (req, res) => {
       if (!res.ok) {
         setValue("inventory-count", null);
         setValue("inventory-total", null);
+        const stockItems = byId("stock-items");
+        const stockKgs = byId("stock-kgs");
+        if (stockItems) stockItems.textContent = "--";
+        if (stockKgs) stockKgs.textContent = "Items: -- | Kgs: --";
         return;
       }
       const data = await res.json();
       const rows = Array.isArray(data.rows) ? data.rows : [];
       setTableEmpty("inventory-table", "inventory-empty", rows);
-      setValue("inventory-count", Number(data.item_count ?? rows.length ?? 0));
-      setValue("inventory-total", Number(data.total_stock ?? 0));
+      const itemCount = Number(data.item_count ?? rows.length ?? 0);
+      const totalStock = Number(data.total_stock ?? 0);
+      setValue("inventory-count", itemCount);
+      setValue("inventory-total", totalStock);
+      const stockItems = byId("stock-items");
+      const stockKgs = byId("stock-kgs");
+      if (stockItems) {
+        stockItems.textContent = "Items: " + itemCount;
+      }
+      let kgTotal = 0;
+      if (Array.isArray(rows)) {
+        for (const r of rows) {
+          const isWeight = String(r.product_type || "").toUpperCase() === "WEIGHT";
+          if (isWeight) kgTotal += Number(r.stock || 0);
+        }
+      }
+      if (stockKgs) {
+        stockKgs.textContent = "Items: " + itemCount + " | Kgs: " + kgTotal.toFixed(2);
+      }
       const body = document.getElementById("inventory-body");
       if (!body) return;
       body.innerHTML = "";

@@ -445,6 +445,7 @@ router.get("/inventory/summary", authUser, async (req, res) => {
     const rows = products.map((row) => ({
       product_id: row.product_id || null,
       product_name: row.product_name || row.product || null,
+      product_type: row.product_type || row.type || null,
       stock: Number(row.stock || 0),
       reorder_level: Number(row.reorder_level || 0),
       category: row.category || null
