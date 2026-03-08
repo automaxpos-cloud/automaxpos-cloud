@@ -122,8 +122,6 @@ router.get("/", (req, res) => {
   <header>
     <h1>AutoMax Cloud Dashboard</h1>
     <div class="muted">Synced sales + backend health</div>
-    <div id="account-context" class="muted" style="margin-top:6px;"></div>
-    <div id="sync-context" class="muted" style="margin-top:4px;"></div>
     <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="btn" id="nav-dashboard" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Dashboard</button>
       <button class="btn" id="nav-users" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Users</button>
@@ -151,7 +149,10 @@ router.get("/", (req, res) => {
       </div>
 
       <div class="card" id="account-bar" style="display:none;gap:12px;flex-wrap:wrap;align-items:center;">
-        <div id="account-text" class="muted"></div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div id="account-text" class="muted"></div>
+          <div id="sync-line" class="muted"></div>
+        </div>
         <button class="btn" id="admin_logout_btn" style="margin-left:auto;padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Logout</button>
       </div>
 
@@ -464,6 +465,32 @@ router.get("/", (req, res) => {
       return token ? { Authorization: "Bearer " + token } : {};
     }
 
+    const MONEY_IDS = new Set([
+      "sales-today",
+      "sales-month",
+      "today-gross",
+      "returns-total",
+      "today-net",
+      "month-gross",
+      "month-returns",
+      "month-net"
+    ]);
+    const INT_IDS = new Set([
+      "today-count",
+      "returns-count",
+      "active-branches",
+      "active-backends",
+      "pending-count",
+      "failed-count"
+    ]);
+
+    function formatNumberForId(id, value) {
+      if (!Number.isFinite(value)) return null;
+      if (INT_IDS.has(id)) return String(Math.round(value));
+      if (MONEY_IDS.has(id)) return value.toFixed(2);
+      return String(value);
+    }
+
     function setValue(id, value, fallback = "--") {
       const el = byId(id);
       if (!el) return;
@@ -472,7 +499,8 @@ router.get("/", (req, res) => {
         return;
       }
       if (typeof value === "number") {
-        el.textContent = Number.isFinite(value) ? String(value) : fallback;
+        const formatted = formatNumberForId(id, value);
+        el.textContent = formatted !== null ? formatted : fallback;
         return;
       }
       el.textContent = String(value);
@@ -718,11 +746,7 @@ router.get("/", (req, res) => {
       const data = await res.json();
       const rows = Array.isArray(data.rows) ? data.rows : [];
       setTableEmpty("backend-table", "backend-empty", rows);
-      const syncCtx = byId("sync-context");
-      if (syncCtx) {
-        if (!rows.length) syncCtx.textContent = "Awaiting first heartbeat.";
-        else syncCtx.textContent = "Cloud connected";
-      }
+      if (!rows.length) setSyncLine("Awaiting first heartbeat.");
       const body = document.getElementById("backend-body");
       body.innerHTML = "";
       for (const r of rows) {
@@ -755,12 +779,11 @@ router.get("/", (req, res) => {
         setValue("pending-count", Number(data.pending_sync_count || 0));
         setValue("failed-count", Number(data.failed_sync_count || 0));
 
-        const syncCtx = byId("sync-context");
-        if (syncCtx) {
-          const cloudStatus = String(data.cloud_status || "DISCONNECTED").toUpperCase();
-          const backendStatus = String(data.backend_status || "OFFLINE").toUpperCase();
-          syncCtx.textContent = "Cloud: " + cloudStatus + " | Backend: " + backendStatus + " | Pending: " + Number(data.pending_sync_count || 0);
-        }
+        const cloudStatus = String(data.cloud_status || "DISCONNECTED").toUpperCase();
+        const backendStatus = String(data.backend_status || "OFFLINE").toUpperCase();
+        const pending = Number(data.pending_sync_count || 0);
+        const failed = Number(data.failed_sync_count || 0);
+        setSyncLine("Cloud: " + cloudStatus + " | Backend: " + backendStatus + " | Pending: " + pending + " | Failed: " + failed);
         const empty = byId("sync-empty");
         if (empty) {
           const hasAny =
@@ -781,6 +804,7 @@ router.get("/", (req, res) => {
         setValue("failed-count", null);
         const empty = byId("sync-empty");
         if (empty) empty.style.display = "block";
+        setSyncLine("Sync: unavailable");
       }
     }
 
@@ -1009,7 +1033,7 @@ router.get("/", (req, res) => {
 
     function updateAuthContext() {
       const token = localStorage.getItem("cloud_admin_token");
-      const ctx = byId("account-context");
+      const ctx = byId("account-text");
       if (!ctx) return;
       if (!token) {
         ctx.textContent = "Logged out";
@@ -1020,7 +1044,7 @@ router.get("/", (req, res) => {
 
     function updateExpiryIndicator() {
       const token = localStorage.getItem("cloud_admin_token");
-      const ctx = byId("account-context");
+      const ctx = byId("account-text");
       const bar = byId("account-text");
       if (!ctx) return;
       if (!token) return;
@@ -1042,6 +1066,12 @@ router.get("/", (req, res) => {
       const mins = Math.ceil(remaining / 60);
       ctx.textContent = ctx.textContent.split(" ? ")[0] + " ? Session expires in: " + mins + "m";
       if (bar) bar.textContent = ctx.textContent;
+    }
+
+    function setSyncLine(text) {
+      const line = byId("sync-line");
+      if (!line) return;
+      line.textContent = text || "";
     }
 
     async function doLogin() {
