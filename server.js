@@ -1,70 +1,13 @@
-const express = require("express");
-const cors = require("cors");
+const dotenv = require("dotenv");
 
-const app = express();
+dotenv.config({ override: true });
 
-app.use(cors());
-app.use(express.json());
+const app = require("./src/app");
+const { PORT } = require("./src/config/env");
 
-const PORT = process.env.PORT || 3000;
+const port = Number(PORT) || 3000;
+const host = "0.0.0.0";
 
-/* Health check */
-app.get("/health", (req, res) => {
-  res.json({
-    service: "AutoMaxPOS Cloud",
-    status: "OK",
-    time: new Date()
-  });
-});
-
-/* Backend heartbeat */
-app.post("/api/cloud/backend/heartbeat", (req, res) => {
-
-  console.log("Backend heartbeat received");
-
-  res.json({
-    ok: true,
-    message: "Backend heartbeat received"
-  });
-
-});
-
-/* License verification */
-app.post("/api/cloud/license/verify", (req, res) => {
-
-  const { license_key } = req.body;
-
-  if (!license_key) {
-    return res.status(400).json({
-      ok: false,
-      message: "License key missing"
-    });
-  }
-
-  res.json({
-    ok: true,
-    valid: true,
-    plan: "PRO"
-  });
-
-});
-
-/* Sales sync */
-app.post("/api/cloud/sales/sync", (req, res) => {
-
-  const sales = req.body.sales || [];
-
-  console.log("Sales received:", sales.length);
-
-  res.json({
-    ok: true,
-    synced_sales: sales.length
-  });
-
-});
-
-app.listen(PORT, () => {
-
-  console.log("AutoMaxPOS Cloud running on port", PORT);
-
+app.listen(port, host, () => {
+  console.log(`AutoMaxPOS Cloud API running on ${host}:${port}`);
 });
