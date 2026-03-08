@@ -264,6 +264,25 @@ router.get("/", (req, res) => {
     </div>
 
     <div class="section">
+      <h2>Inventory Snapshot</h2>
+      <div class="grid cards">
+        <div class="card"><h3>Total Items</h3><div class="value" id="inventory-count">--</div></div>
+        <div class="card"><h3>Total Stock</h3><div class="value" id="inventory-total">--</div></div>
+      </div>
+      <div id="inventory-empty" class="empty" style="display:none;">No inventory snapshot yet.</div>
+      <table id="inventory-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Stock</th>
+            <th>Reorder Level</th>
+          </tr>
+        </thead>
+        <tbody id="inventory-body"></tbody>
+      </table>
+    </div>
+
+    <div class="section">
       <h2>Branch Comparison</h2>
       <div id="branchcomp-empty" class="empty" style="display:none;">No sales yet.</div>
       <table id="branchcomp-table">
@@ -504,7 +523,8 @@ router.get("/", (req, res) => {
       "today-net",
       "month-gross",
       "month-returns",
-      "month-net"
+      "month-net",
+      "inventory-total"
     ]);
     const INT_IDS = new Set([
       "today-count",
@@ -512,7 +532,8 @@ router.get("/", (req, res) => {
       "active-branches",
       "active-backends",
       "pending-count",
-      "failed-count"
+      "failed-count",
+      "inventory-count"
     ]);
 
     function formatNumberForId(id, value) {
@@ -1025,6 +1046,33 @@ router.get("/", (req, res) => {
       }
     }
 
+    async function loadInventorySummary() {
+      debug("loadInventorySummary");
+      const filters = currentFilters();
+      if (!filters.business_id) return;
+      const res = await fetch("/api/cloud/inventory/summary" + (qs(filters) ? "?" + qs(filters) : ""), { headers: authHeaders() });
+      if (!res.ok) {
+        setValue("inventory-count", null);
+        setValue("inventory-total", null);
+        return;
+      }
+      const data = await res.json();
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      setTableEmpty("inventory-table", "inventory-empty", rows);
+      setValue("inventory-count", Number(data.item_count ?? rows.length ?? 0));
+      setValue("inventory-total", Number(data.total_stock ?? 0));
+      const body = document.getElementById("inventory-body");
+      if (!body) return;
+      body.innerHTML = "";
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = "<td>" + (r.product_name || "-") + "</td>" +
+          "<td>" + (r.stock ?? 0) + "</td>" +
+          "<td>" + (r.reorder_level ?? "-") + "</td>";
+        body.appendChild(tr);
+      }
+    }
+
     async function loadBranchComparison() {
       debug("loadBranchComparison");
       const filters = currentFilters();
@@ -1434,6 +1482,7 @@ router.get("/", (req, res) => {
         loadActiveRegisters(),
         loadLiveMonitoring(),
         loadLowStock(),
+        loadInventorySummary(),
         loadBranchComparison(),
         loadSales(),
         loadReturns(),

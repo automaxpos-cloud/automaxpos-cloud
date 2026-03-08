@@ -242,6 +242,7 @@ router.get("/active-registers", authUser, async (req, res) => {
          r.register_name,
          r.cashier_name,
          r.last_seen_at,
+         r.last_sale_at,
          b.name AS business_name,
          br.name AS branch_name,
          CASE
@@ -403,6 +404,56 @@ router.get("/low-stock", authUser, async (req, res) => {
     return res.json({ rows });
   } catch (err) {
     console.error("CLOUD DASHBOARD LOW STOCK ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.get("/inventory/summary", authUser, async (req, res) => {
+  try {
+    const role = req.user?.role || null;
+    let businessId = req.query.business_id || null;
+    let branchId = req.query.branch_id || null;
+    if (role === "BUSINESS_OWNER" || role === "AUDITOR" || role === "BRANCH_MANAGER") {
+      businessId = req.user?.business_id || null;
+    }
+    if (role === "BRANCH_MANAGER") {
+      branchId = req.user?.branch_id || null;
+    }
+    businessId = requireBusinessId({ query: { business_id: businessId } }, res);
+    if (!businessId) return;
+    const result = await pool.query(
+      `SELECT payload_json
+       FROM inventory_snapshots
+       WHERE business_id = $1
+         AND ($2::uuid IS NULL OR branch_id = $2)
+       ORDER BY snapshot_time DESC
+       LIMIT 1`,
+      [businessId, branchId]
+    );
+    if (!result.rows.length || !result.rows[0].payload_json) {
+      return res.json({ rows: [], item_count: 0, total_stock: 0 });
+    }
+    let payload = {};
+    try {
+      payload = JSON.parse(result.rows[0].payload_json);
+    } catch {
+      payload = {};
+    }
+    const products = Array.isArray(payload?.snapshot?.products)
+      ? payload.snapshot.products
+      : [];
+    const rows = products.map((row) => ({
+      product_id: row.product_id || null,
+      product_name: row.product_name || row.product || null,
+      stock: Number(row.stock || 0),
+      reorder_level: Number(row.reorder_level || 0),
+      category: row.category || null
+    }));
+    const item_count = rows.length;
+    const total_stock = rows.reduce((sum, r) => sum + Number(r.stock || 0), 0);
+    return res.json({ rows, item_count, total_stock });
+  } catch (err) {
+    console.error("CLOUD DASHBOARD INVENTORY SUMMARY ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
 });
