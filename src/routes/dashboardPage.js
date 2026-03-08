@@ -195,8 +195,7 @@ router.get("/", (req, res) => {
       <div class="card"><h3>Active Backends</h3><div class="value" id="active-backends">--</div></div>
       <div class="card">
         <h3>Total Stock</h3>
-        <div class="value" id="stock-items">--</div>
-        <div class="muted" id="stock-kgs" style="margin-top:6px;">Items: -- | Kgs: --</div>
+        <div class="value" id="stock-total">--</div>
       </div>
     </div>
     <div id="summary-empty" class="muted" style="margin-top:8px;display:none;">No synced sales yet. Awaiting first sync.</div>
@@ -529,7 +528,8 @@ router.get("/", (req, res) => {
       "month-gross",
       "month-returns",
       "month-net",
-      "inventory-total"
+      "inventory-total",
+      "stock-total"
     ]);
     const INT_IDS = new Set([
       "today-count",
@@ -1059,10 +1059,7 @@ router.get("/", (req, res) => {
       if (!res.ok) {
         setValue("inventory-count", null);
         setValue("inventory-total", null);
-        const stockItems = byId("stock-items");
-        const stockKgs = byId("stock-kgs");
-        if (stockItems) stockItems.textContent = "--";
-        if (stockKgs) stockKgs.textContent = "Items: -- | Kgs: --";
+        setValue("stock-total", null);
         return;
       }
       const data = await res.json();
@@ -1072,21 +1069,7 @@ router.get("/", (req, res) => {
       const totalStock = Number(data.total_stock ?? 0);
       setValue("inventory-count", itemCount);
       setValue("inventory-total", totalStock);
-      const stockItems = byId("stock-items");
-      const stockKgs = byId("stock-kgs");
-      if (stockItems) {
-        stockItems.textContent = "Items: " + itemCount;
-      }
-      let kgTotal = 0;
-      if (Array.isArray(rows)) {
-        for (const r of rows) {
-          const isWeight = String(r.product_type || "").toUpperCase() === "WEIGHT";
-          if (isWeight) kgTotal += Number(r.stock || 0);
-        }
-      }
-      if (stockKgs) {
-        stockKgs.textContent = "Items: " + itemCount + " | Kgs: " + kgTotal.toFixed(2);
-      }
+      setValue("stock-total", totalStock);
       const body = document.getElementById("inventory-body");
       if (!body) return;
       body.innerHTML = "";
