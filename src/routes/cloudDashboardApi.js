@@ -266,6 +266,61 @@ router.get("/active-registers", authUser, async (req, res) => {
   }
 });
 
+router.get("/status", authUser, async (req, res) => {
+  try {
+    const role = req.user?.role || null;
+    let businessId = req.query.business_id || null;
+    let branchId = req.query.branch_id || null;
+    if (role === "BUSINESS_OWNER" || role === "AUDITOR" || role === "BRANCH_MANAGER") {
+      businessId = req.user?.business_id || null;
+    }
+    if (role === "BRANCH_MANAGER") {
+      branchId = req.user?.branch_id || null;
+    }
+    businessId = requireBusinessId({ query: { business_id: businessId } }, res);
+    if (!businessId) return;
+
+    const result = await pool.query(
+      `SELECT GREATEST(
+         (SELECT MAX(COALESCE(local_created_at, synced_at)) FROM synced_sales
+          WHERE business_id = $1 AND ($2::uuid IS NULL OR branch_id = $2)),
+         (SELECT MAX(COALESCE(local_created_at, synced_at)) FROM synced_returns
+          WHERE business_id = $1 AND ($2::uuid IS NULL OR branch_id = $2)),
+         (SELECT MAX(snapshot_time) FROM inventory_snapshots
+          WHERE business_id = $1 AND ($2::uuid IS NULL OR branch_id = $2)),
+         (SELECT MAX(last_seen_at) FROM backend_devices
+          WHERE business_id = $1 AND ($2::uuid IS NULL OR branch_id = $2)),
+         (SELECT MAX(last_seen_at) FROM pos_register_activity
+          WHERE business_id = $1 AND ($2::uuid IS NULL OR branch_id = $2))
+       ) AS last_activity_at`,
+      [businessId, branchId]
+    );
+
+    const lastActivityAt = result.rows[0]?.last_activity_at || null;
+    const revision = lastActivityAt ? new Date(lastActivityAt).toISOString() : null;
+
+    console.log("[CLOUD STATUS UPDATE]", {
+      businessId,
+      branchId,
+      revision,
+      lastActivityAt,
+      eventType: "STATUS_POLL"
+    });
+
+    return res.json({
+      business_id: businessId,
+      branch_id: branchId,
+      last_activity_at: lastActivityAt,
+      last_sync_at: lastActivityAt,
+      last_sale_at: null,
+      revision
+    });
+  } catch (err) {
+    console.error("CLOUD DASHBOARD STATUS ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
 router.get("/returns-summary", authUser, async (req, res) => {
   try {
     const role = req.user?.role || null;

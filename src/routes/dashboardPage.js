@@ -510,7 +510,42 @@ router.get("/", (req, res) => {
       return token ? { Authorization: "Bearer " + token } : {};
     }
 
-      const MONEY_IDS = new Set([
+    function saveDashboardState() {
+      const businessId = byId("filter_business")?.value || "";
+      const branchId = byId("filter_branch")?.value || "";
+      const range = getDateRange();
+      localStorage.setItem("automax_dashboard_business_id", businessId || "");
+      localStorage.setItem("automax_dashboard_branch_id", branchId || "");
+      localStorage.setItem("automax_dashboard_start_date", range.start || "");
+      localStorage.setItem("automax_dashboard_end_date", range.end || "");
+    }
+
+    function loadDashboardState() {
+      return {
+        businessId: localStorage.getItem("automax_dashboard_business_id") || "",
+        branchId: localStorage.getItem("automax_dashboard_branch_id") || "",
+        startDate: localStorage.getItem("automax_dashboard_start_date") || "",
+        endDate: localStorage.getItem("automax_dashboard_end_date") || ""
+      };
+    }
+
+    function hasOption(selectEl, value) {
+      if (!selectEl || !value) return false;
+      return Array.from(selectEl.options || []).some((opt) => opt.value === value);
+    }
+
+    function applySavedDates(saved) {
+      if (!saved.startDate || !saved.endDate) return;
+      const rangeSel = byId("filter_range");
+      if (rangeSel) rangeSel.value = "custom";
+      const start = byId("range_start");
+      const end = byId("range_end");
+      if (start) start.value = saved.startDate;
+      if (end) end.value = saved.endDate;
+      updateRangeInputs();
+    }
+
+    const MONEY_IDS = new Set([
         "sales-today",
         "sales-month",
         "today-gross",
@@ -1042,10 +1077,10 @@ router.get("/", (req, res) => {
       }
     }
 
-      async function loadInventorySummary() {
-        debug("loadInventorySummary");
-        const filters = currentFilters();
-        if (!filters.business_id) return;
+    async function loadInventorySummary() {
+      debug("loadInventorySummary");
+      const filters = currentFilters();
+      if (!filters.business_id) return;
         const url = "/api/cloud/inventory/summary" + (qs(filters) ? "?" + qs(filters) : "");
         const res = await fetch(url, { headers: authHeaders() });
         if (!res.ok) {
@@ -1468,24 +1503,69 @@ router.get("/", (req, res) => {
     }
 
     let refreshTimer = null;
+    let statusPollTimer = null;
+    let lastSeenRevision = null;
+    let dashboardRefreshInFlight = false;
 
     async function refreshAll() {
-      await Promise.all([
-        loadSummary(),
-        loadMonthSales(),
-        loadTodaySales(),
-        loadReturnsSummary(),
-        loadActiveCashiers(),
-        loadActiveRegisters(),
-        loadLiveMonitoring(),
-        loadLowStock(),
-        loadInventorySummary(),
-        loadBranchComparison(),
-        loadSales(),
-        loadReturns(),
-        loadBackends(),
-        loadSyncHealth()
-      ]);
+      if (dashboardRefreshInFlight) return;
+      dashboardRefreshInFlight = true;
+      try {
+        const filters = currentFilters();
+        console.log("[DASH REFRESH CONTEXT]", {
+          businessId: filters.business_id,
+          branchId: filters.branch_id,
+          startDate: filters.start_date,
+          endDate: filters.end_date
+        });
+        await Promise.all([
+          loadSummary(),
+          loadMonthSales(),
+          loadTodaySales(),
+          loadReturnsSummary(),
+          loadActiveCashiers(),
+          loadActiveRegisters(),
+          loadLiveMonitoring(),
+          loadLowStock(),
+          loadInventorySummary(),
+          loadBranchComparison(),
+          loadSales(),
+          loadReturns(),
+          loadBackends(),
+          loadSyncHealth()
+        ]);
+      } finally {
+        dashboardRefreshInFlight = false;
+      }
+    }
+
+    async function pollDashboardStatus() {
+      const filters = currentFilters();
+      if (!filters.business_id) return;
+      if (dashboardRefreshInFlight) return;
+      const url = "/api/cloud/dashboard/status" + (qs(filters) ? "?" + qs(filters) : "");
+      const res = await fetch(url, { headers: authHeaders() });
+      if (!res.ok) return;
+      const status = await res.json();
+      console.log("[DASH STATUS POLL]", status);
+      const newRevision = status?.revision || status?.last_activity_at || status?.last_sync_at || null;
+      if (lastSeenRevision === null) {
+        lastSeenRevision = newRevision;
+        return;
+      }
+      if (newRevision && newRevision !== lastSeenRevision) {
+        console.log("[DASH AUTO REFRESH TRIGGERED]", {
+          previousRevision: lastSeenRevision,
+          newRevision
+        });
+        lastSeenRevision = newRevision;
+        await refreshAll();
+      }
+    }
+
+    function restartStatusPolling() {
+      if (statusPollTimer) clearInterval(statusPollTimer);
+      statusPollTimer = setInterval(pollDashboardStatus, 4000);
     }
 
     function startAutoRefresh() {
@@ -1517,11 +1597,35 @@ router.get("/", (req, res) => {
       bind("admin_login_btn", "click", doLogin);
       bind("admin_logout_btn", "click", doLogout);
       toggleInput("admin_pass", "toggle_admin_pass");
-      bind("filter_business", "change", loadBranchOptions);
+      bind("filter_business", "change", async () => {
+        await loadBranchOptions();
+        saveDashboardState();
+        lastSeenRevision = null;
+        restartStatusPolling();
+      });
       bind("filter_range", "change", () => {
         updateRangeInputs();
+        saveDashboardState();
+        lastSeenRevision = null;
+        restartStatusPolling();
+      });
+      bind("filter_branch", "change", async () => {
+        saveDashboardState();
+        lastSeenRevision = null;
+        restartStatusPolling();
+        await refreshAll();
+        updateFilterContext();
+      });
+      bind("range_start", "change", () => {
+        saveDashboardState();
+      });
+      bind("range_end", "change", () => {
+        saveDashboardState();
       });
       bind("apply_filters", "click", async () => {
+        saveDashboardState();
+        lastSeenRevision = null;
+        restartStatusPolling();
         await refreshAll();
         updateFilterContext();
       });
@@ -1547,13 +1651,35 @@ router.get("/", (req, res) => {
       applyRoleUi();
       toggleLoginUi(!!localStorage.getItem("cloud_admin_token"));
       await loadBusinessOptions();
+      const saved = loadDashboardState();
+      const bizSel = byId("filter_business");
+      if (saved.businessId && hasOption(bizSel, saved.businessId)) {
+        bizSel.value = saved.businessId;
+      } else if (bizSel && bizSel.options.length > 1 && !bizSel.value) {
+        bizSel.value = bizSel.options[1].value;
+      }
       await loadBranchOptions();
+      const brSel = byId("filter_branch");
+      if (saved.branchId && hasOption(brSel, saved.branchId)) {
+        brSel.value = saved.branchId;
+      } else if (brSel && brSel.options.length > 1 && !brSel.value) {
+        brSel.value = brSel.options[1].value;
+      }
+      applySavedDates(saved);
+      console.log("[DASH RESTORE]", {
+        savedBusinessId: saved.businessId,
+        savedBranchId: saved.branchId,
+        savedStartDate: saved.startDate,
+        savedEndDate: saved.endDate,
+        appliedBusinessId: bizSel?.value || "",
+        appliedBranchId: brSel?.value || ""
+      });
       updateRangeInputs();
       updateFilterContext();
       updateAuthContext();
       updateExpiryIndicator();
       await refreshAll();
-      startAutoRefresh();
+      restartStatusPolling();
     }
     window.addEventListener("error", (e) => {
       console.error("[DASH] runtime error:", e.message);
