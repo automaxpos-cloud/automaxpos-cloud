@@ -414,6 +414,7 @@ router.get("/inventory/summary", authUser, async (req, res) => {
     const role = req.user?.role || null;
     let businessId = req.query.business_id || null;
     let branchId = req.query.branch_id || null;
+    const debug = String(req.query.debug || "").trim() === "1";
     if (role === "BUSINESS_OWNER" || role === "AUDITOR" || role === "BRANCH_MANAGER") {
       businessId = req.user?.business_id || null;
     }
@@ -432,7 +433,18 @@ router.get("/inventory/summary", authUser, async (req, res) => {
       [businessId, branchId]
     );
     if (!result.rows.length || !result.rows[0].payload_json) {
-      return res.json({ rows: [], item_count: 0, total_stock: 0 });
+      return res.json({
+        rows: [],
+        item_count: 0,
+        total_stock: 0,
+        total_items_qty: 0,
+        total_kgs_qty: 0,
+        total_weight_qty: 0,
+        total_weight_unit: "kg",
+        business_id: businessId,
+        branch_id: branchId,
+        source: "no_snapshot"
+      });
     }
     let payload = {};
     try {
@@ -457,40 +469,82 @@ router.get("/inventory/summary", authUser, async (req, res) => {
     const total_stock = round2(
       Number(snap.total_stock_qty ?? rows.reduce((sum, r) => sum + Number(r.stock || 0), 0))
     );
-    let total_items_qty = Number(snap.total_items_qty ?? 0);
-    let total_kgs_qty = Number(snap.total_kgs_qty ?? 0);
-    if (!total_items_qty && !total_kgs_qty) {
+    const snapItems = snap.total_items_qty != null ? Number(snap.total_items_qty) : null;
+    const snapKgs = snap.total_kgs_qty != null ? Number(snap.total_kgs_qty) : null;
+    let total_items_qty = Number.isFinite(snapItems) ? snapItems : 0;
+    let total_kgs_qty = Number.isFinite(snapKgs) ? snapKgs : 0;
+    let source = Number.isFinite(snapItems) || Number.isFinite(snapKgs) ? "snapshot_totals" : "snapshot_products";
+
+    let itemProducts = 0;
+    let weightProducts = 0;
+    let unknownProducts = 0;
+    if (!Number.isFinite(snapItems) && !Number.isFinite(snapKgs)) {
+      total_items_qty = 0;
+      total_kgs_qty = 0;
       let debugCount = 0;
       for (const r of rows) {
         const type = String(r.product_type || "").toUpperCase();
         const unit = String(r.unit_label || "").toLowerCase();
         const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
-        if (debugCount < 20) {
+        const isUnknown = !type && !unit;
+        if (isUnknown) unknownProducts += 1;
+        if (isWeight) {
+          weightProducts += 1;
+          total_kgs_qty += Number(r.stock || 0);
+        } else {
+          itemProducts += 1;
+          total_items_qty += Number(r.stock || 0);
+        }
+        if (debug && debugCount < 50) {
           console.log("[INV SUMMARY]", {
             product_id: r.product_id,
             product_name: r.product_name,
             product_type: r.product_type,
             unit_label: r.unit_label,
             stock: r.stock,
-            bucket: isWeight ? "KGS" : "ITEMS"
+            bucket: isWeight ? "KGS" : "ITEMS",
+            unknown_type: isUnknown
           });
           debugCount += 1;
         }
-        if (isWeight) total_kgs_qty += Number(r.stock || 0);
-        else total_items_qty += Number(r.stock || 0);
       }
-      console.log("[INV SUMMARY TOTALS]", {
-        total_items_qty,
-        total_kgs_qty
-      });
+      if (debug) {
+        console.log("[INV SUMMARY TOTALS]", {
+          total_items_qty,
+          total_kgs_qty,
+          item_products: itemProducts,
+          weight_products: weightProducts,
+          unknown_products: unknownProducts
+        });
+      }
+      if (unknownProducts > 0 && !debug) {
+        console.warn("[INV SUMMARY] unknown product_type/unit_label count:", unknownProducts);
+      }
     }
-    return res.json({
+    const response = {
       rows,
       item_count,
       total_stock,
       total_items_qty: round2(total_items_qty),
-      total_kgs_qty: round2(total_kgs_qty)
-    });
+      total_kgs_qty: round2(total_kgs_qty),
+      total_weight_qty: round2(total_kgs_qty),
+      total_weight_unit: "kg",
+      business_id: businessId,
+      branch_id: branchId,
+      source
+    };
+    if (debug) {
+      response.debug = {
+        included_products: rows.length,
+        item_products: itemProducts,
+        weight_products: weightProducts,
+        unknown_products: unknownProducts,
+        business_id: businessId,
+        branch_id: branchId,
+        timestamp: new Date().toISOString()
+      };
+    }
+    return res.json(response);
   } catch (err) {
     console.error("CLOUD DASHBOARD INVENTORY SUMMARY ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
