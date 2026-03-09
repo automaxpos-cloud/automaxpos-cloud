@@ -1058,7 +1058,6 @@ router.get("/", (req, res) => {
           return;
         }
         const data = await res.json();
-        console.log("[TOP STOCK CARD RAW RESPONSE]", { url, data });
         const itemsQty = Number(data.total_items_qty ?? 0);
         const kgsQty = Number(data.total_weight_qty ?? data.total_kgs_qty ?? 0);
         setValue("inventory-items-qty", itemsQty);

@@ -18,7 +18,6 @@ router.get("/summary", authUser, async (req, res) => {
     const role = req.user?.role || null;
     let businessId = req.query.business_id || null;
     let branchId = req.query.branch_id || null;
-    const debug = String(req.query.debug || "").trim() === "1";
     if (role === "BUSINESS_OWNER" || role === "AUDITOR" || role === "BRANCH_MANAGER") {
       businessId = req.user?.business_id || null;
     }
@@ -65,7 +64,6 @@ router.get("/summary", authUser, async (req, res) => {
     let itemProducts = 0;
     let weightProducts = 0;
     let unknownProducts = 0;
-    let debugCount = 0;
     const rows = products.map((row) => {
       const type = String(row.product_type ?? row.type ?? "").trim().toUpperCase();
       const unit = String(row.unit_label || "").toLowerCase();
@@ -79,16 +77,6 @@ router.get("/summary", authUser, async (req, res) => {
       } else {
         itemProducts += 1;
         totalItems += qty;
-      }
-      if (debug && debugCount < 50) {
-        console.log("[INV SUMMARY ROW]", {
-          product: row.product_name || row.product || null,
-          product_type: row.product_type || row.type || null,
-          unit_label: row.unit_label || null,
-          stock: qty,
-          bucket: isWeight ? "KGS" : "ITEMS"
-        });
-        debugCount += 1;
       }
       return {
         product: row.product_name || row.product || null,
@@ -108,17 +96,7 @@ router.get("/summary", authUser, async (req, res) => {
       branch_id: branchId,
       source: "snapshot_products"
     };
-    if (debug) {
-      response.debug = {
-        included_products: rows.length,
-        item_products: itemProducts,
-        weight_products: weightProducts,
-        unknown_products: unknownProducts,
-        business_id: businessId,
-        branch_id: branchId,
-        timestamp: new Date().toISOString()
-      };
-    }
+    // debug removed
     return res.json(response);
   } catch (err) {
     console.error("CLOUD INVENTORY SUMMARY ERROR:", err);
