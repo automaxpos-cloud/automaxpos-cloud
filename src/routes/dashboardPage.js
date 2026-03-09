@@ -510,29 +510,27 @@ router.get("/", (req, res) => {
       return token ? { Authorization: "Bearer " + token } : {};
     }
 
-    const MONEY_IDS = new Set([
-      "sales-today",
-      "sales-month",
-      "today-gross",
-      "returns-total",
-      "today-net",
-      "month-gross",
-      "month-returns",
-      "month-net",
-      "inventory-total",
-      "inventory-kgs-qty"
-    ]);
-    const INT_IDS = new Set([
-      "today-count",
-      "returns-count",
-      "active-branches",
-      "active-backends",
-      "pending-count",
-      "failed-count",
-      "inventory-count",
-      "stock-items",
-      "inventory-items-qty"
-    ]);
+      const MONEY_IDS = new Set([
+        "sales-today",
+        "sales-month",
+        "today-gross",
+        "returns-total",
+        "today-net",
+        "month-gross",
+        "month-returns",
+        "month-net",
+        "inventory-kgs-qty"
+      ]);
+      const INT_IDS = new Set([
+        "today-count",
+        "returns-count",
+        "active-branches",
+        "active-backends",
+        "pending-count",
+        "failed-count",
+        "stock-items",
+        "inventory-items-qty"
+      ]);
 
     function formatNumberForId(id, value) {
       if (!Number.isFinite(value)) return null;
@@ -1044,55 +1042,32 @@ router.get("/", (req, res) => {
       }
     }
 
-    async function loadInventorySummary() {
-      debug("loadInventorySummary");
-      const filters = currentFilters();
-      if (!filters.business_id) return;
-      const res = await fetch("/api/cloud/inventory/summary" + (qs(filters) ? "?" + qs(filters) : ""), { headers: authHeaders() });
-      if (!res.ok) {
-        setValue("inventory-count", null);
-        setValue("inventory-total", null);
+      async function loadInventorySummary() {
+        debug("loadInventorySummary");
+        const filters = currentFilters();
+        if (!filters.business_id) return;
+        const res = await fetch("/api/cloud/inventory/summary" + (qs(filters) ? "?" + qs(filters) : ""), { headers: authHeaders() });
+        if (!res.ok) {
         setValue("inventory-items-qty", null);
         setValue("inventory-kgs-qty", null);
+          const stockItems = byId("stock-items");
+          const stockKgs = byId("stock-kgs");
+          if (stockItems) stockItems.textContent = "Items: --";
+          if (stockKgs) stockKgs.textContent = "Kgs: --";
+          return;
+        }
+        const data = await res.json();
+        const itemsQty = Number(data.total_items_qty ?? 0);
+        const kgsQty = Number(data.total_weight_qty ?? data.total_kgs_qty ?? 0);
+        setValue("inventory-items-qty", itemsQty);
+        setValue("inventory-kgs-qty", kgsQty);
         const stockItems = byId("stock-items");
         const stockKgs = byId("stock-kgs");
-        if (stockItems) stockItems.textContent = "Items: --";
-        if (stockKgs) stockKgs.textContent = "Kgs: --";
-        return;
+        if (stockItems) stockItems.textContent = "Items: " + Math.round(itemsQty);
+        if (stockKgs) stockKgs.textContent = "Kgs: " + Number(kgsQty || 0).toFixed(2);
+        const invEmpty = byId("inventory-empty");
+        if (invEmpty) invEmpty.style.display = (itemsQty || kgsQty) ? "none" : "block";
       }
-      const data = await res.json();
-      const rows = Array.isArray(data.rows) ? data.rows : [];
-      const itemCount = Number(data.item_count ?? rows.length ?? 0);
-      let totalStock = Number(data.total_stock ?? 0);
-      let itemsQty = Number(data.total_items_qty ?? 0);
-      let kgsQty = Number(data.total_kgs_qty ?? 0);
-      if ((!itemsQty && !kgsQty) && Array.isArray(rows) && rows.length) {
-        let tmpItems = 0;
-        let tmpKgs = 0;
-        for (const r of rows) {
-          const type = String(r.product_type || "").toUpperCase();
-          const unit = String(r.unit_label || "").toLowerCase();
-          const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
-          if (isWeight) tmpKgs += Number(r.stock || 0);
-          else tmpItems += Number(r.stock || 0);
-        }
-        itemsQty = tmpItems;
-        kgsQty = tmpKgs;
-      }
-      if (!totalStock && (itemsQty || kgsQty)) {
-        totalStock = itemsQty + kgsQty;
-      }
-      setValue("inventory-count", itemCount);
-      setValue("inventory-total", totalStock);
-      setValue("inventory-items-qty", itemsQty);
-      setValue("inventory-kgs-qty", kgsQty);
-      const stockItems = byId("stock-items");
-      const stockKgs = byId("stock-kgs");
-      if (stockItems) stockItems.textContent = "Items: " + Math.round(itemsQty);
-      if (stockKgs) stockKgs.textContent = "Kgs: " + kgsQty.toFixed(2);
-      const invEmpty = byId("inventory-empty");
-      if (invEmpty) invEmpty.style.display = itemCount ? "none" : "block";
-    }
 
     async function loadBranchComparison() {
       debug("loadBranchComparison");
