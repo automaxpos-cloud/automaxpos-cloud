@@ -195,8 +195,8 @@ router.get("/", (req, res) => {
       <div class="card"><h3>Active Backends</h3><div class="value" id="active-backends">--</div></div>
       <div class="card">
         <h3>Total Stock</h3>
-        <div class="value" id="stock-total">--</div>
-        <div class="muted" id="stock-breakdown" style="margin-top:6px;">Items: -- | Kgs: --</div>
+        <div class="value" id="stock-items">Items: --</div>
+        <div class="muted" id="stock-kgs" style="margin-top:6px;">Kgs: --</div>
       </div>
     </div>
     <div id="summary-empty" class="muted" style="margin-top:8px;display:none;">No synced sales yet. Awaiting first sync.</div>
@@ -530,7 +530,7 @@ router.get("/", (req, res) => {
       "pending-count",
       "failed-count",
       "inventory-count",
-      "stock-total",
+      "stock-items",
       "inventory-items-qty"
     ]);
 
@@ -1052,11 +1052,12 @@ router.get("/", (req, res) => {
       if (!res.ok) {
         setValue("inventory-count", null);
         setValue("inventory-total", null);
-        setValue("stock-total", null);
         setValue("inventory-items-qty", null);
         setValue("inventory-kgs-qty", null);
-        const stockBreakdown = byId("stock-breakdown");
-        if (stockBreakdown) stockBreakdown.textContent = "Items: -- | Kgs: --";
+        const stockItems = byId("stock-items");
+        const stockKgs = byId("stock-kgs");
+        if (stockItems) stockItems.textContent = "Items: --";
+        if (stockKgs) stockKgs.textContent = "Kgs: --";
         return;
       }
       const data = await res.json();
@@ -1083,13 +1084,12 @@ router.get("/", (req, res) => {
       }
       setValue("inventory-count", itemCount);
       setValue("inventory-total", totalStock);
-      setValue("stock-total", itemsQty);
       setValue("inventory-items-qty", itemsQty);
       setValue("inventory-kgs-qty", kgsQty);
-      const stockBreakdown = byId("stock-breakdown");
-      if (stockBreakdown) {
-        stockBreakdown.textContent = "Items: " + Math.round(itemsQty) + " | Kgs: " + kgsQty.toFixed(2);
-      }
+      const stockItems = byId("stock-items");
+      const stockKgs = byId("stock-kgs");
+      if (stockItems) stockItems.textContent = "Items: " + Math.round(itemsQty);
+      if (stockKgs) stockKgs.textContent = "Kgs: " + kgsQty.toFixed(2);
       const invEmpty = byId("inventory-empty");
       if (invEmpty) invEmpty.style.display = itemCount ? "none" : "block";
     }

@@ -460,13 +460,29 @@ router.get("/inventory/summary", authUser, async (req, res) => {
     let total_items_qty = Number(snap.total_items_qty ?? 0);
     let total_kgs_qty = Number(snap.total_kgs_qty ?? 0);
     if (!total_items_qty && !total_kgs_qty) {
+      let debugCount = 0;
       for (const r of rows) {
         const type = String(r.product_type || "").toUpperCase();
         const unit = String(r.unit_label || "").toLowerCase();
         const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
+        if (debugCount < 20) {
+          console.log("[INV SUMMARY]", {
+            product_id: r.product_id,
+            product_name: r.product_name,
+            product_type: r.product_type,
+            unit_label: r.unit_label,
+            stock: r.stock,
+            bucket: isWeight ? "KGS" : "ITEMS"
+          });
+          debugCount += 1;
+        }
         if (isWeight) total_kgs_qty += Number(r.stock || 0);
         else total_items_qty += Number(r.stock || 0);
       }
+      console.log("[INV SUMMARY TOTALS]", {
+        total_items_qty,
+        total_kgs_qty
+      });
     }
     return res.json({
       rows,
