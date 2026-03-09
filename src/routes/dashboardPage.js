@@ -520,8 +520,6 @@ router.get("/", (req, res) => {
       "month-returns",
       "month-net",
       "inventory-total",
-      "stock-total",
-      "inventory-items-qty",
       "inventory-kgs-qty"
     ]);
     const INT_IDS = new Set([
@@ -531,7 +529,9 @@ router.get("/", (req, res) => {
       "active-backends",
       "pending-count",
       "failed-count",
-      "inventory-count"
+      "inventory-count",
+      "stock-total",
+      "inventory-items-qty"
     ]);
 
     function formatNumberForId(id, value) {
@@ -1062,17 +1062,33 @@ router.get("/", (req, res) => {
       const data = await res.json();
       const rows = Array.isArray(data.rows) ? data.rows : [];
       const itemCount = Number(data.item_count ?? rows.length ?? 0);
-      const totalStock = Number(data.total_stock ?? 0);
-      const itemsQty = Number(data.total_items_qty ?? 0);
-      const kgsQty = Number(data.total_kgs_qty ?? 0);
+      let totalStock = Number(data.total_stock ?? 0);
+      let itemsQty = Number(data.total_items_qty ?? 0);
+      let kgsQty = Number(data.total_kgs_qty ?? 0);
+      if ((!itemsQty && !kgsQty) && Array.isArray(rows) && rows.length) {
+        let tmpItems = 0;
+        let tmpKgs = 0;
+        for (const r of rows) {
+          const type = String(r.product_type || "").toUpperCase();
+          const unit = String(r.unit_label || "").toLowerCase();
+          const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
+          if (isWeight) tmpKgs += Number(r.stock || 0);
+          else tmpItems += Number(r.stock || 0);
+        }
+        itemsQty = tmpItems;
+        kgsQty = tmpKgs;
+      }
+      if (!totalStock && (itemsQty || kgsQty)) {
+        totalStock = itemsQty + kgsQty;
+      }
       setValue("inventory-count", itemCount);
       setValue("inventory-total", totalStock);
-      setValue("stock-total", totalStock);
+      setValue("stock-total", itemsQty);
       setValue("inventory-items-qty", itemsQty);
       setValue("inventory-kgs-qty", kgsQty);
       const stockBreakdown = byId("stock-breakdown");
       if (stockBreakdown) {
-        stockBreakdown.textContent = "Items: " + itemsQty.toFixed(2) + " | Kgs: " + kgsQty.toFixed(2);
+        stockBreakdown.textContent = "Items: " + Math.round(itemsQty) + " | Kgs: " + kgsQty.toFixed(2);
       }
       const invEmpty = byId("inventory-empty");
       if (invEmpty) invEmpty.style.display = itemCount ? "none" : "block";

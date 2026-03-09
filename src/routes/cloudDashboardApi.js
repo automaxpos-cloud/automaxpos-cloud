@@ -3,6 +3,7 @@ const { pool } = require("../db/pool");
 const authUser = require("../middleware/authUser");
 
 const router = express.Router();
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 function requireBusinessId(req, res) {
   const businessId = req.query.business_id || null;
@@ -39,12 +40,12 @@ router.get("/today-sales", authUser, async (req, res) => {
     const range = parseRange(req);
     const sales = await pool.query(
       range
-        ? `SELECT COALESCE(SUM(total),0) AS gross_sales, COUNT(*) AS transactions
+        ? `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS gross_sales, COUNT(*) AS transactions
            FROM synced_sales
            WHERE COALESCE(local_created_at, synced_at)::date BETWEEN $3::date AND $4::date
              AND business_id = $1
              AND ($2::uuid IS NULL OR branch_id = $2)`
-        : `SELECT COALESCE(SUM(total),0) AS gross_sales, COUNT(*) AS transactions
+        : `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS gross_sales, COUNT(*) AS transactions
            FROM synced_sales
            WHERE COALESCE(local_created_at, synced_at)::date = CURRENT_DATE
              AND business_id = $1
@@ -53,21 +54,21 @@ router.get("/today-sales", authUser, async (req, res) => {
     );
     const returns = await pool.query(
       range
-        ? `SELECT COALESCE(SUM(total),0) AS returns_total, COUNT(*) AS returns_count
+        ? `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS returns_total, COUNT(*) AS returns_count
            FROM synced_returns
            WHERE COALESCE(local_created_at, synced_at)::date BETWEEN $3::date AND $4::date
              AND business_id = $1
              AND ($2::uuid IS NULL OR branch_id = $2)`
-        : `SELECT COALESCE(SUM(total),0) AS returns_total, COUNT(*) AS returns_count
+        : `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS returns_total, COUNT(*) AS returns_count
            FROM synced_returns
            WHERE COALESCE(local_created_at, synced_at)::date = CURRENT_DATE
              AND business_id = $1
              AND ($2::uuid IS NULL OR branch_id = $2)`,
       range ? [businessId, branchId, range.start, range.end] : [businessId, branchId]
     );
-    const gross = Number(sales.rows[0].gross_sales || 0);
-    const returnsTotal = Number(returns.rows[0].returns_total || 0);
-    const net = gross - returnsTotal;
+    const gross = round2(sales.rows[0].gross_sales || 0);
+    const returnsTotal = round2(returns.rows[0].returns_total || 0);
+    const net = round2(gross - returnsTotal);
     return res.json({
       gross_sales_today: gross,
       returns_today: returnsTotal,
@@ -97,12 +98,12 @@ router.get("/month-sales", authUser, async (req, res) => {
     const range = parseRange(req);
     const sales = await pool.query(
       range
-        ? `SELECT COALESCE(SUM(total),0) AS gross_sales
+        ? `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS gross_sales
            FROM synced_sales
            WHERE COALESCE(local_created_at, synced_at)::date BETWEEN $3::date AND $4::date
              AND business_id = $1
              AND ($2::uuid IS NULL OR branch_id = $2)`
-        : `SELECT COALESCE(SUM(total),0) AS gross_sales
+        : `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS gross_sales
            FROM synced_sales
            WHERE date_trunc('month', COALESCE(local_created_at, synced_at)) = date_trunc('month', CURRENT_DATE)
              AND business_id = $1
@@ -111,21 +112,21 @@ router.get("/month-sales", authUser, async (req, res) => {
     );
     const returns = await pool.query(
       range
-        ? `SELECT COALESCE(SUM(total),0) AS returns_total
+        ? `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS returns_total
            FROM synced_returns
            WHERE COALESCE(local_created_at, synced_at)::date BETWEEN $3::date AND $4::date
              AND business_id = $1
              AND ($2::uuid IS NULL OR branch_id = $2)`
-        : `SELECT COALESCE(SUM(total),0) AS returns_total
+        : `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS returns_total
            FROM synced_returns
            WHERE date_trunc('month', COALESCE(local_created_at, synced_at)) = date_trunc('month', CURRENT_DATE)
              AND business_id = $1
              AND ($2::uuid IS NULL OR branch_id = $2)`,
       range ? [businessId, branchId, range.start, range.end] : [businessId, branchId]
     );
-    const gross = Number(sales.rows[0].gross_sales || 0);
-    const returnsTotal = Number(returns.rows[0].returns_total || 0);
-    const net = gross - returnsTotal;
+    const gross = round2(sales.rows[0].gross_sales || 0);
+    const returnsTotal = round2(returns.rows[0].returns_total || 0);
+    const net = round2(gross - returnsTotal);
     return res.json({
       gross_sales_month: gross,
       returns_month: returnsTotal,
@@ -154,7 +155,7 @@ router.get("/branch-sales", authUser, async (req, res) => {
     const result = await pool.query(
       range
         ? `SELECT br.name AS branch, b.name AS business_name,
-                COALESCE(SUM(s.total),0) AS sales, COUNT(*) AS transactions
+                COALESCE(ROUND(SUM(s.total)::numeric,2),0) AS sales, COUNT(*) AS transactions
            FROM synced_sales s
            LEFT JOIN branches br ON br.id = s.branch_id
            LEFT JOIN businesses b ON b.id = s.business_id
@@ -164,7 +165,7 @@ router.get("/branch-sales", authUser, async (req, res) => {
            GROUP BY br.name, b.name
            ORDER BY sales DESC`
         : `SELECT br.name AS branch, b.name AS business_name,
-                COALESCE(SUM(s.total),0) AS sales, COUNT(*) AS transactions
+                COALESCE(ROUND(SUM(s.total)::numeric,2),0) AS sales, COUNT(*) AS transactions
            FROM synced_sales s
            LEFT JOIN branches br ON br.id = s.branch_id
            LEFT JOIN businesses b ON b.id = s.business_id
@@ -199,7 +200,7 @@ router.get("/active-cashiers", authUser, async (req, res) => {
       range
         ? `SELECT COALESCE(cashier_name,'Unknown') AS cashier_name,
                 COUNT(*) AS transactions,
-                COALESCE(SUM(total),0) AS total
+                COALESCE(ROUND(SUM(total)::numeric,2),0) AS total
            FROM synced_sales
            WHERE COALESCE(local_created_at, synced_at)::date BETWEEN $3::date AND $4::date
              AND business_id = $1
@@ -208,7 +209,7 @@ router.get("/active-cashiers", authUser, async (req, res) => {
            ORDER BY transactions DESC`
         : `SELECT COALESCE(cashier_name,'Unknown') AS cashier_name,
                 COUNT(*) AS transactions,
-                COALESCE(SUM(total),0) AS total
+                COALESCE(ROUND(SUM(total)::numeric,2),0) AS total
            FROM synced_sales
            WHERE COALESCE(local_created_at, synced_at) > NOW() - INTERVAL '10 minutes'
              AND business_id = $1
@@ -281,12 +282,12 @@ router.get("/returns-summary", authUser, async (req, res) => {
     const range = parseRange(req);
     const result = await pool.query(
       range
-        ? `SELECT COALESCE(SUM(total),0) AS total_returns, COUNT(*) AS transactions
+        ? `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS total_returns, COUNT(*) AS transactions
            FROM synced_returns
            WHERE COALESCE(local_created_at, synced_at)::date BETWEEN $3::date AND $4::date
              AND business_id = $1
              AND ($2::uuid IS NULL OR branch_id = $2)`
-        : `SELECT COALESCE(SUM(total),0) AS total_returns, COUNT(*) AS transactions
+        : `SELECT COALESCE(ROUND(SUM(total)::numeric,2),0) AS total_returns, COUNT(*) AS transactions
            FROM synced_returns
            WHERE COALESCE(local_created_at, synced_at)::date = CURRENT_DATE
              AND business_id = $1
@@ -446,20 +447,29 @@ router.get("/inventory/summary", authUser, async (req, res) => {
       product_id: row.product_id || null,
       product_name: row.product_name || row.product || null,
       product_type: row.product_type || row.type || null,
+      unit_label: row.unit_label || null,
       stock: Number(row.stock || 0),
       reorder_level: Number(row.reorder_level || 0),
       category: row.category || null
     }));
     const item_count = rows.length;
-    const total_stock = rows.reduce((sum, r) => sum + Number(r.stock || 0), 0);
+    const total_stock = round2(rows.reduce((sum, r) => sum + Number(r.stock || 0), 0));
     let total_items_qty = 0;
     let total_kgs_qty = 0;
     for (const r of rows) {
-      const isWeight = String(r.product_type || "").toUpperCase() === "WEIGHT";
+      const type = String(r.product_type || "").toUpperCase();
+      const unit = String(r.unit_label || "").toLowerCase();
+      const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
       if (isWeight) total_kgs_qty += Number(r.stock || 0);
       else total_items_qty += Number(r.stock || 0);
     }
-    return res.json({ rows, item_count, total_stock, total_items_qty, total_kgs_qty });
+    return res.json({
+      rows,
+      item_count,
+      total_stock,
+      total_items_qty: round2(total_items_qty),
+      total_kgs_qty: round2(total_kgs_qty)
+    });
   } catch (err) {
     console.error("CLOUD DASHBOARD INVENTORY SUMMARY ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
