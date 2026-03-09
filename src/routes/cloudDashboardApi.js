@@ -478,48 +478,63 @@ router.get("/inventory/summary", authUser, async (req, res) => {
     let itemProducts = 0;
     let weightProducts = 0;
     let unknownProducts = 0;
-    if (!Number.isFinite(snapItems) && !Number.isFinite(snapKgs)) {
-      total_items_qty = 0;
-      total_kgs_qty = 0;
-      let debugCount = 0;
-      for (const r of rows) {
-        const type = String(r.product_type || "").toUpperCase();
-        const unit = String(r.unit_label || "").toLowerCase();
-        const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
-        const isUnknown = !type && !unit;
-        if (isUnknown) unknownProducts += 1;
-        if (isWeight) {
-          weightProducts += 1;
-          total_kgs_qty += Number(r.stock || 0);
-        } else {
-          itemProducts += 1;
-          total_items_qty += Number(r.stock || 0);
-        }
-        if (debug && debugCount < 50) {
-          console.log("[INV SUMMARY]", {
-            product_id: r.product_id,
-            product_name: r.product_name,
-            product_type: r.product_type,
-            unit_label: r.unit_label,
-            stock: r.stock,
-            bucket: isWeight ? "KGS" : "ITEMS",
-            unknown_type: isUnknown
-          });
-          debugCount += 1;
-        }
+    let calcItems = 0;
+    let calcKgs = 0;
+    let debugCount = 0;
+    for (const r of rows) {
+      const type = String(r.product_type || "").toUpperCase();
+      const unit = String(r.unit_label || "").toLowerCase();
+      const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
+      const isUnknown = !type && !unit;
+      if (isUnknown) unknownProducts += 1;
+      if (isWeight) {
+        weightProducts += 1;
+        calcKgs += Number(r.stock || 0);
+      } else {
+        itemProducts += 1;
+        calcItems += Number(r.stock || 0);
       }
-      if (debug) {
-        console.log("[INV SUMMARY TOTALS]", {
-          total_items_qty,
-          total_kgs_qty,
-          item_products: itemProducts,
-          weight_products: weightProducts,
-          unknown_products: unknownProducts
+      if (debug && debugCount < 50) {
+        console.log("[INV SUMMARY]", {
+          product_id: r.product_id,
+          product_name: r.product_name,
+          product_type: r.product_type,
+          unit_label: r.unit_label,
+          stock: r.stock,
+          bucket: isWeight ? "KGS" : "ITEMS",
+          unknown_type: isUnknown
         });
+        debugCount += 1;
       }
-      if (unknownProducts > 0 && !debug) {
-        console.warn("[INV SUMMARY] unknown product_type/unit_label count:", unknownProducts);
-      }
+    }
+
+    const snapPresent = Number.isFinite(snapItems) || Number.isFinite(snapKgs);
+    const snapSeemsCombined = snapPresent && weightProducts > 0 && Number(snapKgs || 0) === 0;
+    const diffItems = Math.abs((snapItems || 0) - calcItems);
+    const diffKgs = Math.abs((snapKgs || 0) - calcKgs);
+    const snapMismatch = snapPresent && (diffItems > 0.01 || diffKgs > 0.01);
+
+    if (!snapPresent || snapSeemsCombined || snapMismatch) {
+      total_items_qty = calcItems;
+      total_kgs_qty = calcKgs;
+      source = "snapshot_products";
+    }
+
+    if (debug) {
+      console.log("[INV SUMMARY TOTALS]", {
+        total_items_qty,
+        total_kgs_qty,
+        item_products: itemProducts,
+        weight_products: weightProducts,
+        unknown_products: unknownProducts,
+        snap_items: snapItems,
+        snap_kgs: snapKgs,
+        snap_present: snapPresent,
+        snap_mismatch: snapMismatch,
+        snap_seems_combined: snapSeemsCombined
+      });
+    } else if (unknownProducts > 0) {
+      console.warn("[INV SUMMARY] unknown product_type/unit_label count:", unknownProducts);
     }
     const response = {
       rows,
