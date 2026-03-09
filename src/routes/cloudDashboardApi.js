@@ -440,6 +440,7 @@ router.get("/inventory/summary", authUser, async (req, res) => {
     } catch {
       payload = {};
     }
+    const snap = payload?.snapshot || {};
     const products = Array.isArray(payload?.snapshot?.products)
       ? payload.snapshot.products
       : [];
@@ -452,16 +453,20 @@ router.get("/inventory/summary", authUser, async (req, res) => {
       reorder_level: Number(row.reorder_level || 0),
       category: row.category || null
     }));
-    const item_count = rows.length;
-    const total_stock = round2(rows.reduce((sum, r) => sum + Number(r.stock || 0), 0));
-    let total_items_qty = 0;
-    let total_kgs_qty = 0;
-    for (const r of rows) {
-      const type = String(r.product_type || "").toUpperCase();
-      const unit = String(r.unit_label || "").toLowerCase();
-      const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
-      if (isWeight) total_kgs_qty += Number(r.stock || 0);
-      else total_items_qty += Number(r.stock || 0);
+    const item_count = Number(snap.total_products || rows.length || 0);
+    const total_stock = round2(
+      Number(snap.total_stock_qty ?? rows.reduce((sum, r) => sum + Number(r.stock || 0), 0))
+    );
+    let total_items_qty = Number(snap.total_items_qty ?? 0);
+    let total_kgs_qty = Number(snap.total_kgs_qty ?? 0);
+    if (!total_items_qty && !total_kgs_qty) {
+      for (const r of rows) {
+        const type = String(r.product_type || "").toUpperCase();
+        const unit = String(r.unit_label || "").toLowerCase();
+        const isWeight = type === "WEIGHT" || unit === "kg" || unit === "kgs";
+        if (isWeight) total_kgs_qty += Number(r.stock || 0);
+        else total_items_qty += Number(r.stock || 0);
+      }
     }
     return res.json({
       rows,
