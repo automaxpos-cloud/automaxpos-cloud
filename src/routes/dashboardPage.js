@@ -1046,7 +1046,8 @@ router.get("/", (req, res) => {
         debug("loadInventorySummary");
         const filters = currentFilters();
         if (!filters.business_id) return;
-        const res = await fetch("/api/cloud/inventory/summary" + (qs(filters) ? "?" + qs(filters) : ""), { headers: authHeaders() });
+        const url = "/api/cloud/inventory/summary" + (qs(filters) ? "?" + qs(filters) : "");
+        const res = await fetch(url, { headers: authHeaders() });
         if (!res.ok) {
         setValue("inventory-items-qty", null);
         setValue("inventory-kgs-qty", null);
@@ -1057,6 +1058,7 @@ router.get("/", (req, res) => {
           return;
         }
         const data = await res.json();
+        console.log("[TOP STOCK CARD RAW RESPONSE]", { url, data });
         const itemsQty = Number(data.total_items_qty ?? 0);
         const kgsQty = Number(data.total_weight_qty ?? data.total_kgs_qty ?? 0);
         setValue("inventory-items-qty", itemsQty);
