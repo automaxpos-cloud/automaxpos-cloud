@@ -35,25 +35,35 @@ async function createBranch(req, res) {
 }
 
 async function registerBackend(req, res) {
-  const { business_id, branch_id, backend_name, device_fingerprint, app_version } = req.body || {};
+  const {
+    business_id,
+    branch_id,
+    backend_name,
+    device_fingerprint,
+    app_version,
+    installation_id,
+    device_secret
+  } = req.body || {};
   if (!business_id || !branch_id) {
     return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "business_id and branch_id required" });
   }
-  if (!device_fingerprint) {
-    return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "device_fingerprint required" });
+  if (!device_fingerprint && !installation_id) {
+    return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "device_fingerprint or installation_id required" });
   }
 
-  const apiKey = generateApiKey();
-  const apiKeyHash = await bcrypt.hash(apiKey, 10);
+  const backendToken = generateApiKey();
+  const backendTokenHash = await bcrypt.hash(backendToken, 10);
+  const deviceSecretHash = device_secret ? await bcrypt.hash(String(device_secret), 10) : null;
   const clientBackendId = req.body?.backend_id || null;
-  const tokenPrefix = apiKey.slice(0, 6);
+  const tokenPrefix = backendToken.slice(0, 6);
 
   const existing = await query(
     `SELECT id FROM backend_devices
-     WHERE machine_id = $1
+     WHERE ($1::uuid IS NOT NULL AND installation_id = $1)
+        OR ($2::text IS NOT NULL AND machine_id = $2)
      ORDER BY last_seen_at DESC NULLS LAST, created_at DESC NULLS LAST, id
      LIMIT 1`,
-    [device_fingerprint]
+    [installation_id || null, device_fingerprint || null]
   );
 
   if (existing.rows.length) {
@@ -65,10 +75,23 @@ async function registerBackend(req, res) {
            api_key_hash = $3,
            backend_version = $4,
            backend_name = $5,
+           installation_id = $6,
+           machine_id = $7,
+           device_secret_hash = $8,
            is_active = TRUE,
            last_seen_at = NOW()
-       WHERE id = $6`,
-      [business_id, branch_id, apiKeyHash, app_version || null, backend_name || null, backendId]
+       WHERE id = $9`,
+      [
+        business_id,
+        branch_id,
+        backendTokenHash,
+        app_version || null,
+        backend_name || null,
+        installation_id || null,
+        device_fingerprint || null,
+        deviceSecretHash,
+        backendId
+      ]
     );
 
     // eslint-disable-next-line no-console
@@ -79,7 +102,8 @@ async function registerBackend(req, res) {
     return res.json({
       ok: true,
       backend_id: backendId,
-      api_key: apiKey,
+      backend_token: backendToken,
+      api_key: backendToken,
       business_id,
       branch_id,
       reused: true
@@ -88,10 +112,19 @@ async function registerBackend(req, res) {
 
   const result = await query(
     `INSERT INTO backend_devices
-     (business_id, branch_id, api_key_hash, is_active, backend_version, machine_id, backend_name, last_seen_at)
-     VALUES ($1,$2,$3,TRUE,$4,$5,$6,NOW())
+     (business_id, branch_id, api_key_hash, is_active, backend_version, machine_id, backend_name, last_seen_at, installation_id, device_secret_hash)
+     VALUES ($1,$2,$3,TRUE,$4,$5,$6,NOW(),$7,$8)
      RETURNING id`,
-    [business_id, branch_id, apiKeyHash, app_version || null, device_fingerprint, backend_name || null]
+    [
+      business_id,
+      branch_id,
+      backendTokenHash,
+      app_version || null,
+      device_fingerprint || null,
+      backend_name || null,
+      installation_id || null,
+      deviceSecretHash
+    ]
   );
 
   // eslint-disable-next-line no-console
@@ -102,7 +135,8 @@ async function registerBackend(req, res) {
   return res.json({
     ok: true,
     backend_id: result.rows[0].id,
-    api_key: apiKey,
+    backend_token: backendToken,
+    api_key: backendToken,
     business_id,
     branch_id
   });
