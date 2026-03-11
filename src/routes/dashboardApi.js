@@ -48,7 +48,7 @@ router.get("/summary", authUser, async (req, res) => {
       [businessId, branchId]
     );
     const activeBackends = await pool.query(
-      `SELECT COUNT(DISTINCT COALESCE(machine_id::text, id::text)) AS c
+      `SELECT COUNT(DISTINCT COALESCE(machine_id::text, NULLIF(backend_name,''), id::text)) AS c
        FROM backend_devices
        WHERE last_seen_at >= NOW() - INTERVAL '10 minutes'
          AND ($1::uuid IS NULL OR business_id = $1)
@@ -128,11 +128,11 @@ router.get("/backends", authUser, async (req, res) => {
     if (!scope) return;
     const { businessId, branchId } = scope;
     const result = await pool.query(
-      `WITH ranked AS (
+       `WITH ranked AS (
          SELECT
            bd.*,
            ROW_NUMBER() OVER (
-             PARTITION BY COALESCE(bd.machine_id::text, bd.id::text)
+             PARTITION BY COALESCE(bd.machine_id::text, NULLIF(bd.backend_name,''), bd.id::text)
              ORDER BY bd.last_seen_at DESC NULLS LAST, bd.created_at DESC NULLS LAST, bd.id DESC
            ) AS rn
          FROM backend_devices bd
