@@ -39,23 +39,61 @@ async function registerBackend(req, res) {
   if (!business_id || !branch_id) {
     return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "business_id and branch_id required" });
   }
+  if (!device_fingerprint) {
+    return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "device_fingerprint required" });
+  }
 
   const apiKey = generateApiKey();
   const apiKeyHash = await bcrypt.hash(apiKey, 10);
+  const clientBackendId = req.body?.backend_id || null;
+  const tokenPrefix = apiKey.slice(0, 6);
+
+  const existing = await query(
+    `SELECT id FROM backend_devices WHERE machine_id = $1 LIMIT 1`,
+    [device_fingerprint]
+  );
+
+  if (existing.rows.length) {
+    const backendId = existing.rows[0].id;
+    await query(
+      `UPDATE backend_devices
+       SET business_id = $1,
+           branch_id = $2,
+           api_key_hash = $3,
+           backend_version = $4,
+           backend_name = $5,
+           is_active = TRUE,
+           last_seen_at = NOW()
+       WHERE id = $6`,
+      [business_id, branch_id, apiKeyHash, app_version || null, backend_name || null, backendId]
+    );
+
+    // eslint-disable-next-line no-console
+    console.log("[HOSTED_REGISTER] machine_id=%s client_backend_id=%s stored_backend_id=%s action=update business_id=%s branch_id=%s token_prefix=%s",
+      device_fingerprint, clientBackendId || "-", backendId, business_id, branch_id, tokenPrefix
+    );
+
+    return res.json({
+      ok: true,
+      backend_id: backendId,
+      api_key: apiKey,
+      business_id,
+      branch_id,
+      reused: true
+    });
+  }
 
   const result = await query(
     `INSERT INTO backend_devices
-     (business_id, branch_id, api_key_hash, is_active, backend_version, machine_id, backend_name)
-     VALUES ($1,$2,$3,TRUE,$4,$5,$6)
+     (business_id, branch_id, api_key_hash, is_active, backend_version, machine_id, backend_name, last_seen_at)
+     VALUES ($1,$2,$3,TRUE,$4,$5,$6,NOW())
      RETURNING id`,
-    [
-      business_id,
-      branch_id,
-      apiKeyHash,
-      app_version || null,
-      device_fingerprint || null,
-      backend_name || null
-    ]
+    [business_id, branch_id, apiKeyHash, app_version || null, device_fingerprint, backend_name || null]
+  );
+
+  // eslint-disable-next-line no-console
+  console.log("[HOSTED_REGISTER] machine_id=%s client_backend_id=%s stored_backend_id=%s action=insert business_id=%s branch_id=%s token_prefix=%s",
+    device_fingerprint, clientBackendId || "-", result.rows[0].id, business_id, branch_id, tokenPrefix
   );
 
   return res.json({

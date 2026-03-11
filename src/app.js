@@ -13,7 +13,11 @@ const cloudDashboardApi = require("./routes/cloudDashboardApi");
 const cloudReportsApi = require("./routes/cloudReportsApi");
 const cloudInventoryApi = require("./routes/cloudInventoryApi");
 const cloudUsersApi = require("./routes/cloudUsers");
+const licenseAdminApi = require("./routes/licenseAdmin");
+const adminApi = require("./routes/adminApi");
 const setupWizard = require("./routes/setupWizard");
+const adminPage = require("./routes/adminPage");
+const publicApi = require("./routes/publicApi");
 
 const app = express();
 
@@ -46,6 +50,9 @@ app.use("/api/cloud/dashboard", cloudDashboardApi);
 app.use("/api/cloud/reports", cloudReportsApi);
 app.use("/api/cloud/inventory", cloudInventoryApi);
 app.use("/api/cloud/users", cloudUsersApi);
+app.use("/api/cloud/licenses", licenseAdminApi);
+app.use("/api/admin", adminApi);
+app.use("/api/public", publicApi);
 if (NODE_ENV !== "production") {
   app.use("/api/cloud/setup", setupWizard);
   app.use("/setup", setupWizard);
@@ -53,6 +60,7 @@ if (NODE_ENV !== "production") {
 app.use("/dashboard", dashboardPage);
 app.use("/login", dashboardPage);
 app.use("/api/dashboard", dashboardApi);
+app.use("/admin", adminPage);
 
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Route not found" });

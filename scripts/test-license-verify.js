@@ -22,7 +22,7 @@ function loadEnvLocal() {
   return env;
 }
 
-function postJson(host, port, path, headers, body) {
+function getJson(host, port, path, headers) {
   return new Promise((resolve, reject) => {
     // eslint-disable-next-line global-require
     const http = require("http");
@@ -31,12 +31,8 @@ function postJson(host, port, path, headers, body) {
         host,
         port,
         path,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-          ...headers
-        }
+        method: "GET",
+        headers
       },
       (res) => {
         let data = "";
@@ -45,31 +41,23 @@ function postJson(host, port, path, headers, body) {
       }
     );
     req.on("error", reject);
-    req.write(body);
     req.end();
   });
 }
 
 async function main() {
   const env = loadEnvLocal();
-  const payload = {
-    license_key: "TEST-KEY",
-    machine_id: "demo-machine",
-    backend_id: env.TEST_BACKEND_ID
-  };
-
   const port = Number(process.env.PORT || 3001);
-  const result = await postJson(
+  const result = await getJson(
     "127.0.0.1",
     port,
-    "/api/cloud/license/verify",
+    "/api/cloud/license/current",
     {
       "Authorization": `Bearer ${env.TEST_API_KEY}`,
       "X-Backend-Id": env.TEST_BACKEND_ID,
       "X-Business-Id": env.TEST_BUSINESS_ID,
       "X-Branch-Id": env.TEST_BRANCH_ID
-    },
-    JSON.stringify(payload)
+    }
   );
 
   console.log(`status: ${result.status}`);

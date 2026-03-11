@@ -1,7 +1,4 @@
 const express = require("express");
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
 const auth = require("../middleware/authMiddleware");
 const backendController = require("../controllers/backendController");
 const licenseController = require("../controllers/licenseController");
@@ -16,20 +13,10 @@ const registerActivityController = require("../controllers/registerActivityContr
 
 const router = express.Router();
 
-function isLocalRequest(req) {
-  const ip = req.ip || req.connection?.remoteAddress || "";
-  return ip.includes("127.0.0.1") || ip === "::1" || ip.includes("::ffff:127.0.0.1");
-}
-
-function loadSetupLink() {
-  const appdata = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-  const linkFile = path.join(appdata, "AutoMaxPOS", "cloud_setup.json");
-  try {
-    if (fs.existsSync(linkFile)) {
-      return JSON.parse(fs.readFileSync(linkFile, "utf-8"));
-    }
-  } catch {}
-  return null;
+function maskSecret(value) {
+  if (!value) return "(missing)";
+  if (value.length <= 6) return "***";
+  return `${value.slice(0, 4)}***${value.slice(-2)}`;
 }
 
 function adminOrLocalSetup(req, res, next) {
@@ -38,17 +25,44 @@ function adminOrLocalSetup(req, res, next) {
     return adminJwt(req, res, next);
   }
 
-  if (!isLocalRequest(req)) {
+  const primarySecret = String(req.headers["x-backend-secret"] || "").trim();
+  const legacySecret = String(req.headers["x-onboarding-secret"] || req.headers["x-automax-secret"] || "").trim();
+  const expectedSecret = String(
+    process.env.BACKEND_REGISTRATION_SECRET || process.env.CLOUD_ONBOARDING_SECRET || ""
+  ).trim();
+
+  if (!expectedSecret) {
+    // eslint-disable-next-line no-console
+    console.log("[HOSTED_REGISTER] missing BACKEND_REGISTRATION_SECRET env");
+    return res.status(500).json({
+      ok: false,
+      message: "Server missing BACKEND_REGISTRATION_SECRET",
+      code: "SERVER_MISSING_CONFIG"
+    });
+  }
+
+  const provided = primarySecret || legacySecret;
+  if (!provided) {
+    // eslint-disable-next-line no-console
+    console.log("[HOSTED_REGISTER] missing auth header (x-backend-secret)");
+    return res.status(401).json({
+      ok: false,
+      message: "Missing auth header",
+      code: "MISSING_AUTH_HEADER"
+    });
+  }
+
+  if (provided !== expectedSecret) {
+    // eslint-disable-next-line no-console
+    console.log("[HOSTED_REGISTER] invalid secret provided=%s expected=%s",
+      maskSecret(provided), maskSecret(expectedSecret)
+    );
     return res.status(401).json({ ok: false, message: "Unauthorized", code: "UNAUTHORIZED" });
   }
 
-  const link = loadSetupLink();
-  const { business_id, branch_id } = req.body || {};
-  if (!link || !link.business_id || !link.branch_id) {
-    return res.status(403).json({ ok: false, message: "Setup not completed", code: "SETUP_REQUIRED" });
-  }
-  if (String(link.business_id) !== String(business_id) || String(link.branch_id) !== String(branch_id)) {
-    return res.status(403).json({ ok: false, message: "Setup mismatch", code: "SETUP_MISMATCH" });
+  if (!primarySecret && legacySecret) {
+    // eslint-disable-next-line no-console
+    console.log("[HOSTED_REGISTER] using deprecated header (x-onboarding-secret/x-automax-secret)");
   }
 
   return next();
@@ -60,7 +74,7 @@ router.post("/branches", adminJwt, registrationController.createBranch);
 router.post("/backends/register", adminOrLocalSetup, registrationController.registerBackend);
 
 router.post("/backend/heartbeat", auth, backendController.heartbeat);
-router.post("/license/verify", auth, licenseController.verify);
+router.get("/license/current", auth, licenseController.current);
 router.post("/sales/sync", auth, salesController.syncSales);
 router.post("/returns/sync", auth, returnsController.syncReturns);
 router.post("/inventory/snapshot", auth, inventorySnapshotController.syncSnapshot);

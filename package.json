@@ -13,16 +13,21 @@
     "report:daily": "node scripts/daily-summary-report.js"
   },
   "dependencies": {
+    "@swc/helpers": "^0.5.19",
     "bcrypt": "^5.1.1",
+    "binary": "^0.3.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
     "express": "^4.19.2",
+    "fstream": "^1.0.12",
     "helmet": "^7.1.0",
+    "iconv-lite": "^0.7.2",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "pdfkit": "^0.15.0",
     "pg": "^8.12.0",
+    "unzipper": "^0.12.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

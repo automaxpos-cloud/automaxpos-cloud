@@ -126,6 +126,7 @@ router.get("/", (req, res) => {
       <button class="btn" id="nav-dashboard" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Dashboard</button>
       <button class="btn" id="nav-monitoring" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Live Monitoring</button>
       <button class="btn" id="nav-users" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Users</button>
+      <button class="btn" id="nav-licenses" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Licensing</button>
       <button class="btn" id="export_pdf_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--accent);color:#fff;">Export PDF</button>
       <button class="btn" id="export_xlsx_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Export Excel</button>
     </div>
@@ -461,6 +462,60 @@ router.get("/", (req, res) => {
           </thead>
           <tbody id="users-body"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section id="licenses-section" style="display:none;">
+      <div class="section" style="margin-top:0;">
+        <h2>Licensing</h2>
+        <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="min-width:240px;">
+            <label class="muted">Backend</label>
+            <select id="license_backend" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);"></select>
+          </div>
+          <div style="min-width:200px;">
+            <label class="muted">Plan</label>
+            <select id="license_plan" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);">
+              <option value="Starter">Starter (1)</option>
+              <option value="Standard">Standard (3)</option>
+              <option value="Business">Business (5)</option>
+              <option value="Enterprise">Enterprise (Unlimited)</option>
+            </select>
+          </div>
+          <div style="min-width:200px;">
+            <label class="muted">Device Limit (override)</label>
+            <input id="license_device_limit" type="number" min="0" placeholder="auto" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <button class="btn" id="license_issue_btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--accent);color:#fff;">Activate / Update</button>
+          <button class="btn" id="license_renew_btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Renew 2 Years</button>
+          <div id="license_status" class="muted"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Current License</h2>
+        <div id="license-empty" class="empty" style="display:none;">No license found for selected backend.</div>
+        <div class="grid cards">
+          <div class="card">
+            <h3>License ID</h3>
+            <div class="value" id="license_id">--</div>
+            <div class="muted" id="license_status_text" style="margin-top:6px;">--</div>
+          </div>
+          <div class="card">
+            <h3>Plan</h3>
+            <div class="value" id="license_plan_text">--</div>
+            <div class="muted" id="license_device_limit_text" style="margin-top:6px;">--</div>
+          </div>
+          <div class="card">
+            <h3>Issued</h3>
+            <div class="value" id="license_issued_at">--</div>
+          </div>
+          <div class="card">
+            <h3>Expires</h3>
+            <div class="value" id="license_expires_at">--</div>
+            <div class="muted" id="license_grace_ends_at" style="margin-top:6px;">--</div>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -1286,19 +1341,25 @@ router.get("/", (req, res) => {
       const dash = byId("dashboard-section");
       const monitoring = byId("monitoring-section");
       const users = byId("users-section");
+      const licenses = byId("licenses-section");
       if (dash) dash.style.display = name === "dashboard" ? "block" : "none";
       if (monitoring) monitoring.style.display = name === "monitoring" ? "block" : "none";
       if (users) users.style.display = name === "users" ? "block" : "none";
+      if (licenses) licenses.style.display = name === "licenses" ? "block" : "none";
     }
 
     function applyRoleUi() {
       const user = state.user || {};
       const role = String(user.role || "");
       const navUsers = byId("nav-users");
-      if (role && role !== "SUPERADMIN") {
+      const navLicenses = byId("nav-licenses");
+      const isSuper = role === "SUPERADMIN" || role === "SUPER_ADMIN";
+      if (role && !isSuper) {
         if (navUsers) navUsers.style.display = "none";
+        if (navLicenses) navLicenses.style.display = "none";
       } else {
         if (navUsers) navUsers.style.display = "inline-block";
+        if (navLicenses) navLicenses.style.display = "inline-block";
       }
 
       const biz = byId("filter_business");
@@ -1539,6 +1600,165 @@ router.get("/", (req, res) => {
       }
     }
 
+    function formatEpoch(sec) {
+      const n = Number(sec || 0);
+      if (!Number.isFinite(n) || n <= 0) return "--";
+      try {
+        return new Date(n * 1000).toLocaleString();
+      } catch {
+        return String(sec);
+      }
+    }
+
+    function setLicenseStatus(text, color) {
+      const status = byId("license_status");
+      if (!status) return;
+      status.textContent = text || "";
+      status.style.color = color || "var(--muted)";
+    }
+
+    function setText(id, value) {
+      const el = byId(id);
+      if (el) el.textContent = value;
+    }
+
+    function normalizePlanValue(plan, deviceLimit) {
+      const raw = String(plan || "").trim().toUpperCase();
+      const limit = Number(deviceLimit);
+      const derived =
+        Number.isFinite(limit)
+          ? (limit === 0
+            ? "Enterprise"
+            : limit <= 1
+              ? "Starter"
+              : limit <= 3
+                ? "Standard"
+                : limit <= 5
+                  ? "Business"
+                  : "Enterprise")
+          : "";
+      const legacyMap = {
+        BASIC: "Starter",
+        STARTER: "Starter",
+        STANDARD: "Standard",
+        PREMIUM: "Business",
+        BUSINESS: "Business",
+        PRO: "Enterprise",
+        ENTERPRISE: "Enterprise",
+        UNLIMITED: "Enterprise"
+      };
+      if (raw && legacyMap[raw]) return derived || legacyMap[raw];
+      if (derived) return derived;
+      return "Business";
+    }
+
+    function clearLicenseFields() {
+      setText("license_id", "--");
+      setText("license_plan_text", "--");
+      setText("license_device_limit_text", "--");
+      setText("license_issued_at", "--");
+      setText("license_expires_at", "--");
+      setText("license_grace_ends_at", "--");
+      setText("license_status_text", "--");
+    }
+
+    async function loadLicenseBackends() {
+      const sel = byId("license_backend");
+      if (!sel) return;
+      const token = localStorage.getItem("cloud_admin_token");
+      if (!token) return;
+      const filters = {
+        business_id: byId("filter_business")?.value || "",
+        branch_id: byId("filter_branch")?.value || ""
+      };
+      const url = "/api/dashboard/backends" + (qs(filters) ? "?" + qs(filters) : "");
+      const res = await fetch(url, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      sel.innerHTML = "";
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = rows.length ? "Select Backend" : "No backends";
+      sel.appendChild(placeholder);
+      rows.forEach((row) => {
+        const opt = document.createElement("option");
+        opt.value = row.backend_id || row.id;
+        opt.textContent = row.backend_name || row.backend_id || "Backend";
+        sel.appendChild(opt);
+      });
+      clearLicenseFields();
+    }
+
+    async function loadLicenseDetails() {
+      const backendId = byId("license_backend")?.value || "";
+      const empty = byId("license-empty");
+      if (!backendId) {
+        if (empty) empty.style.display = "block";
+        clearLicenseFields();
+        return;
+      }
+      const url = "/api/cloud/licenses/current?backend_id=" + encodeURIComponent(backendId);
+      const res = await fetch(url, { headers: authHeaders() });
+      if (!res.ok) {
+        if (empty) empty.style.display = "block";
+        clearLicenseFields();
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      const meta = data.meta || {};
+      if (empty) empty.style.display = "none";
+      setText("license_id", meta.license_id || "--");
+      setText("license_plan_text", normalizePlanValue(meta.plan, meta.device_limit) || "--");
+      const limitText = meta.device_limit == null || Number(meta.device_limit) === 0
+        ? "Unlimited"
+        : String(meta.device_limit);
+      setText("license_device_limit_text", "Device limit: " + limitText);
+      setText("license_issued_at", formatEpoch(meta.issued_at));
+      setText("license_expires_at", formatEpoch(meta.expires_at));
+      setText("license_grace_ends_at", "Grace ends: " + formatEpoch(meta.grace_ends_at));
+      setText("license_status_text", "Status: " + (meta.status || "ACTIVE"));
+
+      const planSel = byId("license_plan");
+      if (planSel) planSel.value = normalizePlanValue(meta.plan, meta.device_limit);
+      const deviceInput = byId("license_device_limit");
+      if (deviceInput) {
+        deviceInput.value =
+          meta.device_limit == null || Number(meta.device_limit) === 0
+            ? ""
+            : String(meta.device_limit);
+      }
+    }
+
+    async function issueLicense() {
+      const backendId = byId("license_backend")?.value || "";
+      if (!backendId) {
+        setLicenseStatus("Select a backend first.", "var(--warn)");
+        return;
+      }
+      const plan = byId("license_plan")?.value || "Starter";
+      const rawLimit = String(byId("license_device_limit")?.value || "").trim();
+      const deviceLimit = rawLimit === "" ? null : Number(rawLimit);
+
+      setLicenseStatus("Issuing license...", "var(--muted)");
+      const res = await fetch("/api/cloud/licenses/issue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          backend_id: backendId,
+          plan,
+          device_limit: deviceLimit
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLicenseStatus(data.message || "Failed to issue license.", "var(--bad)");
+        return;
+      }
+      setLicenseStatus("License issued.", "var(--good)");
+      await loadLicenseDetails();
+    }
+
     async function pollDashboardStatus() {
       const filters = currentFilters();
       if (!filters.business_id) return;
@@ -1602,6 +1822,7 @@ router.get("/", (req, res) => {
         saveDashboardState();
         lastSeenRevision = null;
         restartStatusPolling();
+        await loadLicenseBackends();
       });
       bind("filter_range", "change", () => {
         updateRangeInputs();
@@ -1615,6 +1836,7 @@ router.get("/", (req, res) => {
         restartStatusPolling();
         await refreshAll();
         updateFilterContext();
+        await loadLicenseBackends();
       });
       bind("range_start", "change", () => {
         saveDashboardState();
@@ -1628,6 +1850,7 @@ router.get("/", (req, res) => {
         restartStatusPolling();
         await refreshAll();
         updateFilterContext();
+        await loadLicenseBackends();
       });
       bind("nav-dashboard", "click", () => showSection("dashboard"));
       bind("nav-monitoring", "click", async () => {
@@ -1640,9 +1863,17 @@ router.get("/", (req, res) => {
         await loadUserBranches();
         await loadUsers();
       });
+      bind("nav-licenses", "click", async () => {
+        showSection("licenses");
+        await loadLicenseBackends();
+        await loadLicenseDetails();
+      });
       bind("export_pdf_btn", "click", exportDailyPdf);
       bind("export_xlsx_btn", "click", exportExcel);
       bind("user_business", "change", loadUserBranches);
+      bind("license_backend", "change", loadLicenseDetails);
+      bind("license_issue_btn", "click", issueLicense);
+      bind("license_renew_btn", "click", issueLicense);
       bind("user_save_btn", "click", saveUser);
       bind("user_cancel_btn", "click", resetUserForm);
       bind("users-body", "click", handleUsersTableClick);
