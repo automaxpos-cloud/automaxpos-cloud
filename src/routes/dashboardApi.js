@@ -48,7 +48,7 @@ router.get("/summary", authUser, async (req, res) => {
       [businessId, branchId]
     );
     const activeBackends = await pool.query(
-      `SELECT COUNT(*) AS c
+      `SELECT COUNT(DISTINCT COALESCE(machine_id::text, id::text)) AS c
        FROM backend_devices
        WHERE last_seen_at >= NOW() - INTERVAL '10 minutes'
          AND ($1::uuid IS NULL OR business_id = $1)
@@ -128,23 +128,33 @@ router.get("/backends", authUser, async (req, res) => {
     if (!scope) return;
     const { businessId, branchId } = scope;
     const result = await pool.query(
-      `SELECT
-         bd.id AS backend_id,
-         COALESCE(bd.backend_name, bd.id::text) AS backend_name,
+      `WITH ranked AS (
+         SELECT
+           bd.*,
+           ROW_NUMBER() OVER (
+             PARTITION BY COALESCE(bd.machine_id::text, bd.id::text)
+             ORDER BY bd.last_seen_at DESC NULLS LAST, bd.created_at DESC NULLS LAST, bd.id DESC
+           ) AS rn
+         FROM backend_devices bd
+         WHERE ($1::uuid IS NULL OR bd.business_id = $1)
+           AND ($2::uuid IS NULL OR bd.branch_id = $2)
+       )
+       SELECT
+         r.id AS backend_id,
+         COALESCE(r.backend_name, r.id::text) AS backend_name,
          b.name AS business_name,
          br.name AS branch_name,
-         bd.last_seen_at AS last_heartbeat_at,
-         bd.backend_version,
+         r.last_seen_at AS last_heartbeat_at,
+         r.backend_version,
          CASE
-           WHEN bd.last_seen_at >= NOW() - INTERVAL '10 minutes' THEN 'online'
+           WHEN r.last_seen_at >= NOW() - INTERVAL '10 minutes' THEN 'online'
            ELSE 'offline'
          END AS status
-       FROM backend_devices bd
-       LEFT JOIN businesses b ON b.id = bd.business_id
-       LEFT JOIN branches br ON br.id = bd.branch_id
-       WHERE ($1::uuid IS NULL OR bd.business_id = $1)
-         AND ($2::uuid IS NULL OR bd.branch_id = $2)
-       ORDER BY bd.last_seen_at DESC NULLS LAST`
+       FROM ranked r
+       LEFT JOIN businesses b ON b.id = r.business_id
+       LEFT JOIN branches br ON br.id = r.branch_id
+       WHERE r.rn = 1
+       ORDER BY r.last_seen_at DESC NULLS LAST`
       ,
       [businessId, branchId]
     );

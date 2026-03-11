@@ -49,7 +49,10 @@ async function registerBackend(req, res) {
   const tokenPrefix = apiKey.slice(0, 6);
 
   const existing = await query(
-    `SELECT id FROM backend_devices WHERE machine_id = $1 LIMIT 1`,
+    `SELECT id FROM backend_devices
+     WHERE machine_id = $1
+     ORDER BY last_seen_at DESC NULLS LAST, created_at DESC NULLS LAST, id
+     LIMIT 1`,
     [device_fingerprint]
   );
 
