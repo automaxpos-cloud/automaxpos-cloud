@@ -6,6 +6,13 @@ function generateApiKey() {
   return uuidv4().replace(/-/g, "") + uuidv4().replace(/-/g, "");
 }
 
+function maskId(value) {
+  const v = String(value || "");
+  if (!v) return "-";
+  if (v.length <= 8) return "***";
+  return `${v.slice(0, 4)}***${v.slice(-4)}`;
+}
+
 async function createBusiness(req, res) {
   const { business_name, owner_name, email, phone } = req.body || {};
   if (!business_name) {
@@ -57,88 +64,78 @@ async function registerBackend(req, res) {
   const clientBackendId = req.body?.backend_id || null;
   const tokenPrefix = backendToken.slice(0, 6);
 
-  const existing = await query(
-    `SELECT id FROM backend_devices
-     WHERE ($1::uuid IS NOT NULL AND installation_id = $1)
-        OR ($2::text IS NOT NULL AND machine_id = $2)
-     ORDER BY last_seen_at DESC NULLS LAST, created_at DESC NULLS LAST, id
-     LIMIT 1`,
-    [installation_id || null, device_fingerprint || null]
-  );
-
-  if (existing.rows.length) {
-    const backendId = existing.rows[0].id;
-    await query(
-      `UPDATE backend_devices
-       SET business_id = $1,
-           branch_id = $2,
-           api_key_hash = $3,
-           backend_version = $4,
-           backend_name = $5,
-           installation_id = $6,
-           machine_id = $7,
-           device_secret_hash = $8,
-           is_active = TRUE,
-           last_seen_at = NOW()
-       WHERE id = $9`,
+  let result = null;
+  if (installation_id) {
+    result = await query(
+      `INSERT INTO backend_devices
+       (business_id, branch_id, api_key_hash, is_active, backend_version, machine_id, backend_name, last_seen_at, installation_id, device_secret_hash)
+       VALUES ($1,$2,$3,TRUE,$4,$5,$6,NOW(),$7,$8)
+       ON CONFLICT (installation_id)
+       DO UPDATE SET
+         business_id = EXCLUDED.business_id,
+         branch_id = EXCLUDED.branch_id,
+         api_key_hash = EXCLUDED.api_key_hash,
+         is_active = TRUE,
+         backend_version = EXCLUDED.backend_version,
+         machine_id = EXCLUDED.machine_id,
+         backend_name = EXCLUDED.backend_name,
+         device_secret_hash = EXCLUDED.device_secret_hash,
+         last_seen_at = NOW()
+       RETURNING id, (xmax = 0) AS inserted`,
       [
         business_id,
         branch_id,
         backendTokenHash,
         app_version || null,
-        backend_name || null,
-        installation_id || null,
         device_fingerprint || null,
-        deviceSecretHash,
-        backendId
+        backend_name || null,
+        installation_id,
+        deviceSecretHash
       ]
     );
-
-    // eslint-disable-next-line no-console
-    console.log("[HOSTED_REGISTER] machine_id=%s client_backend_id=%s stored_backend_id=%s action=update business_id=%s branch_id=%s token_prefix=%s",
-      device_fingerprint, clientBackendId || "-", backendId, business_id, branch_id, tokenPrefix
+  } else {
+    result = await query(
+      `INSERT INTO backend_devices
+       (business_id, branch_id, api_key_hash, is_active, backend_version, machine_id, backend_name, last_seen_at, device_secret_hash)
+       VALUES ($1,$2,$3,TRUE,$4,$5,$6,NOW(),$7)
+       ON CONFLICT (machine_id)
+       DO UPDATE SET
+         business_id = EXCLUDED.business_id,
+         branch_id = EXCLUDED.branch_id,
+         api_key_hash = EXCLUDED.api_key_hash,
+         is_active = TRUE,
+         backend_version = EXCLUDED.backend_version,
+         backend_name = EXCLUDED.backend_name,
+         device_secret_hash = EXCLUDED.device_secret_hash,
+         last_seen_at = NOW()
+       RETURNING id, (xmax = 0) AS inserted`,
+      [
+        business_id,
+        branch_id,
+        backendTokenHash,
+        app_version || null,
+        device_fingerprint || null,
+        backend_name || null,
+        deviceSecretHash
+      ]
     );
-
-    return res.json({
-      ok: true,
-      backend_id: backendId,
-      backend_token: backendToken,
-      api_key: backendToken,
-      business_id,
-      branch_id,
-      reused: true
-    });
   }
 
-  const result = await query(
-    `INSERT INTO backend_devices
-     (business_id, branch_id, api_key_hash, is_active, backend_version, machine_id, backend_name, last_seen_at, installation_id, device_secret_hash)
-     VALUES ($1,$2,$3,TRUE,$4,$5,$6,NOW(),$7,$8)
-     RETURNING id`,
-    [
-      business_id,
-      branch_id,
-      backendTokenHash,
-      app_version || null,
-      device_fingerprint || null,
-      backend_name || null,
-      installation_id || null,
-      deviceSecretHash
-    ]
-  );
-
+  const backendId = result.rows[0].id;
+  const action = result.rows[0].inserted ? "insert" : "update";
   // eslint-disable-next-line no-console
-  console.log("[HOSTED_REGISTER] machine_id=%s client_backend_id=%s stored_backend_id=%s action=insert business_id=%s branch_id=%s token_prefix=%s",
-    device_fingerprint, clientBackendId || "-", result.rows[0].id, business_id, branch_id, tokenPrefix
+  console.log("[HOSTED_REGISTER] machine_id=%s client_backend_id=%s stored_backend_id=%s action=%s business_id=%s branch_id=%s token_prefix=%s",
+    maskId(device_fingerprint), maskId(clientBackendId || "-"), maskId(backendId), action, business_id, branch_id, tokenPrefix
   );
 
   return res.json({
     ok: true,
-    backend_id: result.rows[0].id,
+    backend_id: backendId,
     backend_token: backendToken,
     api_key: backendToken,
     business_id,
-    branch_id
+    branch_id,
+    reused: action !== "insert"
   });
 }
 

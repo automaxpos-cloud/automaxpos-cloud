@@ -42,7 +42,8 @@ router.get("/summary", authUser, async (req, res) => {
     const activeBranches = await pool.query(
       `SELECT COUNT(DISTINCT branch_id) AS c
        FROM backend_devices
-       WHERE last_seen_at >= NOW() - INTERVAL '10 minutes'
+       WHERE is_active = TRUE
+         AND last_seen_at >= NOW() - INTERVAL '2 minutes'
          AND ($1::uuid IS NULL OR business_id = $1)
          AND ($2::uuid IS NULL OR branch_id = $2)`,
       [businessId, branchId]
@@ -50,7 +51,8 @@ router.get("/summary", authUser, async (req, res) => {
     const activeBackends = await pool.query(
       `SELECT COUNT(DISTINCT COALESCE(machine_id::text, NULLIF(backend_name,''), id::text)) AS c
        FROM backend_devices
-       WHERE last_seen_at >= NOW() - INTERVAL '10 minutes'
+       WHERE is_active = TRUE
+         AND last_seen_at >= NOW() - INTERVAL '2 minutes'
          AND ($1::uuid IS NULL OR business_id = $1)
          AND ($2::uuid IS NULL OR branch_id = $2)`,
       [businessId, branchId]
@@ -128,33 +130,24 @@ router.get("/backends", authUser, async (req, res) => {
     if (!scope) return;
     const { businessId, branchId } = scope;
     const result = await pool.query(
-       `WITH ranked AS (
-         SELECT
-           bd.*,
-           ROW_NUMBER() OVER (
-             PARTITION BY COALESCE(bd.machine_id::text, NULLIF(bd.backend_name,''), bd.id::text)
-             ORDER BY bd.last_seen_at DESC NULLS LAST, bd.created_at DESC NULLS LAST, bd.id DESC
-           ) AS rn
-         FROM backend_devices bd
-         WHERE ($1::uuid IS NULL OR bd.business_id = $1)
-           AND ($2::uuid IS NULL OR bd.branch_id = $2)
-       )
-       SELECT
-         r.id AS backend_id,
-         COALESCE(r.backend_name, r.id::text) AS backend_name,
+       `SELECT
+         bd.id AS backend_id,
+         COALESCE(bd.backend_name, bd.id::text) AS backend_name,
          b.name AS business_name,
          br.name AS branch_name,
-         r.last_seen_at AS last_heartbeat_at,
-         r.backend_version,
+         bd.last_seen_at AS last_heartbeat_at,
+         bd.backend_version,
          CASE
-           WHEN r.last_seen_at >= NOW() - INTERVAL '10 minutes' THEN 'online'
+           WHEN bd.last_seen_at >= NOW() - INTERVAL '2 minutes' THEN 'online'
            ELSE 'offline'
          END AS status
-       FROM ranked r
-       LEFT JOIN businesses b ON b.id = r.business_id
-       LEFT JOIN branches br ON br.id = r.branch_id
-       WHERE r.rn = 1
-       ORDER BY r.last_seen_at DESC NULLS LAST`
+       FROM backend_devices bd
+       LEFT JOIN businesses b ON b.id = bd.business_id
+       LEFT JOIN branches br ON br.id = bd.branch_id
+       WHERE bd.is_active = TRUE
+         AND ($1::uuid IS NULL OR bd.business_id = $1)
+         AND ($2::uuid IS NULL OR bd.branch_id = $2)
+       ORDER BY bd.last_seen_at DESC NULLS LAST`
       ,
       [businessId, branchId]
     );
@@ -224,7 +217,8 @@ router.get("/sync-health", authUser, async (req, res) => {
     const lastHeartbeat = await pool.query(
       `SELECT MAX(last_seen_at) AS last_heartbeat_at
        FROM backend_devices
-       WHERE ($1::uuid IS NULL OR business_id = $1)
+       WHERE is_active = TRUE
+         AND ($1::uuid IS NULL OR business_id = $1)
          AND ($2::uuid IS NULL OR branch_id = $2)`,
       [businessId, branchId]
     );
@@ -235,8 +229,8 @@ router.get("/sync-health", authUser, async (req, res) => {
 
     const backendStatus =
       !lastHeartbeatAt ? "OFFLINE"
-      : (new Date(lastHeartbeatAt) >= new Date(Date.now() - 5 * 60 * 1000)) ? "ONLINE"
-      : (new Date(lastHeartbeatAt) >= new Date(Date.now() - 15 * 60 * 1000)) ? "STALE"
+      : (new Date(lastHeartbeatAt) >= new Date(Date.now() - 2 * 60 * 1000)) ? "ONLINE"
+      : (new Date(lastHeartbeatAt) >= new Date(Date.now() - 10 * 60 * 1000)) ? "STALE"
       : "OFFLINE";
 
     let cloudStatus = "DISCONNECTED";
