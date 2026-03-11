@@ -72,6 +72,7 @@ function adminOrLocalSetup(req, res, next) {
 router.post("/businesses", adminJwt, registrationController.createBusiness);
 router.post("/branches", adminJwt, registrationController.createBranch);
 router.post("/backends/register", adminOrLocalSetup, registrationController.registerBackend);
+router.post("/backends/rotate-token", auth, registrationController.rotateBackendToken);
 
 router.post("/backend/heartbeat", auth, backendController.heartbeat);
 router.get("/license/current", auth, licenseController.current);

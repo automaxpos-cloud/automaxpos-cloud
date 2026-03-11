@@ -142,4 +142,33 @@ async function registerBackend(req, res) {
   });
 }
 
-module.exports = { createBusiness, createBranch, registerBackend };
+async function rotateBackendToken(req, res) {
+  try {
+    const backendId = req.backend?.id || null;
+    if (!backendId) {
+      return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "backend_id required" });
+    }
+    const backendToken = generateApiKey();
+    const backendTokenHash = await bcrypt.hash(backendToken, 10);
+    const result = await query(
+      `UPDATE backend_devices
+       SET api_key_hash = $1,
+           token_version = COALESCE(token_version, 1) + 1,
+           last_seen_at = NOW()
+       WHERE id = $2
+       RETURNING token_version`,
+      [backendTokenHash, backendId]
+    );
+    return res.json({
+      ok: true,
+      backend_id: backendId,
+      backend_token: backendToken,
+      token_version: result.rows[0]?.token_version || 1
+    });
+  } catch (err) {
+    console.error("ROTATE TOKEN ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "Token rotation failed" });
+  }
+}
+
+module.exports = { createBusiness, createBranch, registerBackend, rotateBackendToken };
