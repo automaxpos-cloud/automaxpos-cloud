@@ -704,11 +704,11 @@ router.get(
       setToast("Logged out", "var(--warn)");
     }
 
-    async function loadSummary() {
+    async function loadSummary(silent) {
       const res = await fetch("/api/admin/summary", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setToast("Failed to load summary.", "var(--bad)");
+        if (!silent) setToast("Failed to load summary.", "var(--bad)");
         byId("sum_pending").textContent = "Error";
         byId("sum_issued").textContent = "Error";
         byId("sum_businesses").textContent = "Error";
@@ -731,7 +731,7 @@ router.get(
       byId("sum_revoked").textContent = revoked ? String(revoked) : "No revoked licenses";
     }
 
-    async function loadRequests() {
+    async function loadRequests(silent) {
       byId("requests_status").textContent = "Loading...";
       const q = byId("request_search")?.value.trim() || "";
       const url = "/api/admin/license-requests" + (q ? "?q=" + encodeURIComponent(q) : "");
@@ -740,7 +740,8 @@ router.get(
       if (!res.ok) {
         const msg = data?.message || data?.error || "Failed to load requests.";
         byId("requests_status").textContent = msg;
-        return setToast(msg, "var(--bad)");
+        if (!silent) return setToast(msg, "var(--bad)");
+        return;
       }
       const body = byId("requests_body");
       body.innerHTML = "";
@@ -788,14 +789,15 @@ router.get(
       });
     }
 
-    async function loadLicenses() {
+    async function loadLicenses(silent) {
       byId("licenses_status").textContent = "Loading...";
       const res = await fetch("/api/admin/licenses", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = data?.message || data?.error || "Failed to load licenses.";
         byId("licenses_status").textContent = msg;
-        return setToast(msg, "var(--bad)");
+        if (!silent) return setToast(msg, "var(--bad)");
+        return;
       }
       const body = byId("licenses_body");
       body.innerHTML = "";
@@ -826,14 +828,15 @@ router.get(
       });
     }
 
-    async function loadBackends() {
+    async function loadBackends(silent) {
       byId("backends_status").textContent = "Loading...";
       const res = await fetch("/api/admin/backends", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = data?.message || data?.error || "Failed to load backends.";
         byId("backends_status").textContent = msg;
-        return setToast(msg, "var(--bad)");
+        if (!silent) return setToast(msg, "var(--bad)");
+        return;
       }
       const body = byId("backends_body");
       body.innerHTML = "";
@@ -871,14 +874,15 @@ router.get(
       });
     }
 
-    async function loadBusinesses() {
+    async function loadBusinesses(silent) {
       const res = await fetch("/api/admin/catalog/businesses", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       const body = byId("businesses_body");
       body.innerHTML = "";
       if (!res.ok) {
         byId("businesses_status").textContent = "Failed to load.";
-        return setToast("Failed to load businesses.", "var(--bad)");
+        if (!silent) return setToast("Failed to load businesses.", "var(--bad)");
+        return;
       }
       byId("businesses_status").textContent = (data.rows || []).length + " rows";
       byId("businesses_empty").classList.toggle("hidden", (data.rows || []).length > 0);
@@ -902,7 +906,7 @@ router.get(
       }
     }
 
-    async function loadBackendsCatalog() {
+    async function loadBackendsCatalog(_silent) {
       const bizId = byId("manual_business")?.value || "";
       const url = "/api/admin/catalog/backends" + (bizId ? "?business_id=" + encodeURIComponent(bizId) : "");
       const res = await fetch(url, { headers: authHeaders() });
@@ -924,13 +928,14 @@ router.get(
       });
     }
 
-    async function loadManualLicenses() {
+    async function loadManualLicenses(silent) {
       byId("manual_status").textContent = "Loading...";
       const res = await fetch("/api/admin/licenses", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         byId("manual_status").textContent = "Failed to load.";
-        return setToast("Failed to load licenses.", "var(--bad)");
+        if (!silent) return setToast("Failed to load licenses.", "var(--bad)");
+        return;
       }
       const body = byId("manual_body");
       body.innerHTML = "";
@@ -991,13 +996,15 @@ router.get(
       if (!token) {
         return setToast("Please login to load admin data.", "var(--warn)");
       }
-      await loadSummary();
-      await loadRequests();
-      await loadLicenses();
-      await loadBackends();
-      await loadBusinesses();
-      await loadBackendsCatalog();
-      await loadManualLicenses();
+      await Promise.allSettled([
+        loadSummary(true),
+        loadRequests(true),
+        loadLicenses(true),
+        loadBackends(true),
+        loadBusinesses(true),
+        loadBackendsCatalog(true),
+        loadManualLicenses(true)
+      ]);
       updateManualDerived();
     }
 

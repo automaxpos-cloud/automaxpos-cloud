@@ -585,6 +585,23 @@ router.get("/backends", adminJwt, async (_req, res) => {
       if (!exists.rows[0]?.t) {
         return res.status(500).json({ ok: false, error: "MISSING_TABLE", message: "backend_licenses table missing" });
       }
+      const hbExists = await pool.query(`SELECT to_regclass('public.backend_heartbeats') AS t`);
+      const hasHeartbeats = !!hbExists.rows[0]?.t;
+      const heartbeatJoin = hasHeartbeats
+        ? `
+      LEFT JOIN LATERAL (
+        SELECT bh.heartbeat_at AS last_heartbeat
+        FROM backend_heartbeats bh
+        WHERE bh.backend_id = bd.id
+        ORDER BY bh.heartbeat_at DESC
+        LIMIT 1
+      ) hb ON TRUE
+        `
+        : `
+      LEFT JOIN LATERAL (
+        SELECT NULL::timestamptz AS last_heartbeat
+      ) hb ON TRUE
+        `;
       const rows = await pool.query(
         `
       SELECT
@@ -596,11 +613,11 @@ router.get("/backends", adminJwt, async (_req, res) => {
         br.name AS branch_name,
         bd.machine_id,
         bd.backend_version,
-        bd.last_seen_at AS last_heartbeat,
+        COALESCE(hb.last_heartbeat, bd.last_seen_at) AS last_heartbeat,
         bd.is_active,
         bd.is_flagged,
         CASE
-          WHEN bd.last_seen_at >= NOW() - INTERVAL '10 minutes' THEN 'ONLINE'
+          WHEN COALESCE(hb.last_heartbeat, bd.last_seen_at) >= NOW() - INTERVAL '10 minutes' THEN 'ONLINE'
           ELSE 'OFFLINE'
         END AS status,
         bl.license_id,
@@ -613,6 +630,7 @@ router.get("/backends", adminJwt, async (_req, res) => {
       FROM backend_devices bd
       LEFT JOIN businesses b ON b.id = bd.business_id
       LEFT JOIN branches br ON br.id = bd.branch_id
+      ${heartbeatJoin}
       LEFT JOIN LATERAL (
         SELECT bl.*
         FROM backend_licenses bl
@@ -640,15 +658,15 @@ router.get("/backends", adminJwt, async (_req, res) => {
         ORDER BY lr.updated_at DESC NULLS LAST, lr.requested_at DESC NULLS LAST
         LIMIT 1
       ) lreq ON TRUE
-      ORDER BY bd.last_seen_at DESC NULLS LAST
+      ORDER BY COALESCE(hb.last_heartbeat, bd.last_seen_at) DESC NULLS LAST
       LIMIT 500
       `
     );
     return res.json({ ok: true, rows: rows.rows || [] });
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error("ADMIN BACKENDS ERROR:", err);
-    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+    console.error("ADMIN BACKENDS ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load backends" });
   }
 });
 
