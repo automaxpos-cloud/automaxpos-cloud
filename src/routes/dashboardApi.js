@@ -4,6 +4,64 @@ const authUser = require("../middleware/authUser");
 
 const router = express.Router();
 
+function normalizePlan(raw) {
+  const plan = String(raw || "").trim();
+  const map = {
+    Starter: "Starter",
+    Standard: "Standard",
+    Business: "Business",
+    Enterprise: "Enterprise"
+  };
+  return map[plan] || "Starter";
+}
+
+function baseLimitForPlan(plan) {
+  const normalized = normalizePlan(plan);
+  const map = {
+    Starter: 1,
+    Standard: 3,
+    Business: 5,
+    Enterprise: 10
+  };
+  return map[normalized] || 1;
+}
+
+function calcAmountExpected({ requestType, plan, hardwareBundle, extraCount }) {
+  const type = String(requestType || "").toLowerCase();
+  const bundle = String(hardwareBundle || "No Printer");
+  const planKey = normalizePlan(plan);
+  const prices = {
+    Starter: {
+      "No Printer": 5500,
+      "58mm Thermal Bluetooth Printer": 6500,
+      "80mm Thermal Bluetooth Printer": 8000
+    },
+    Standard: {
+      "No Printer": 6500,
+      "58mm Thermal Bluetooth Printer": 7500,
+      "80mm Thermal Bluetooth Printer": 9000
+    },
+    Business: {
+      "No Printer": 7500,
+      "58mm Thermal Bluetooth Printer": 8500,
+      "80mm Thermal Bluetooth Printer": 10000
+    },
+    Enterprise: {
+      "No Printer": 10000,
+      "58mm Thermal Bluetooth Printer": 11000,
+      "80mm Thermal Bluetooth Printer": 12500
+    }
+  };
+
+  if (type === "device_addon") {
+    return Math.max(0, Number(extraCount || 0)) * 500;
+  }
+  if (type === "new_license" || type === "upgrade") {
+    return Number(prices[planKey]?.[bundle] || 0) || null;
+  }
+  return null;
+}
+
 function getScopedFilters(req, res) {
   const role = req.user?.role || null;
   let businessId = req.query.business_id || null;
@@ -133,6 +191,9 @@ router.get("/backends", authUser, async (req, res) => {
        `SELECT
          bd.id AS backend_id,
          COALESCE(bd.backend_name, bd.id::text) AS backend_name,
+         bd.business_id,
+         bd.branch_id,
+         bd.machine_id,
          b.name AS business_name,
          br.name AS branch_name,
          bd.last_seen_at AS last_heartbeat_at,
@@ -251,6 +312,190 @@ router.get("/sync-health", authUser, async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("DASHBOARD SYNC HEALTH ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.get("/licenses/current", authUser, async (req, res) => {
+  try {
+    const scope = getScopedFilters(req, res);
+    if (!scope) return;
+    const { businessId, branchId } = scope;
+    const backendId = String(req.query.backend_id || "").trim();
+    if (!backendId) {
+      return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "backend_id required" });
+    }
+    const backend = await pool.query(
+      `SELECT id, business_id, branch_id
+       FROM backend_devices
+       WHERE id = $1`,
+      [backendId]
+    );
+    if (!backend.rows.length) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Backend not found" });
+    }
+    const row = backend.rows[0];
+    if (String(row.business_id || "") !== String(businessId || "")) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in business scope" });
+    }
+    if (branchId && String(row.branch_id || "") !== String(branchId || "")) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in branch scope" });
+    }
+    const license = await pool.query(
+      `SELECT license_id, plan, device_limit, issued_at, expires_at, status
+       FROM backend_licenses
+       WHERE backend_id = $1
+       LIMIT 1`,
+      [backendId]
+    );
+    if (!license.rows.length) {
+      return res.json({ ok: true, license: null });
+    }
+    return res.json({ ok: true, license: license.rows[0] });
+  } catch (err) {
+    console.error("DASHBOARD LICENSE CURRENT ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.get("/licenses/requests", authUser, async (req, res) => {
+  try {
+    const scope = getScopedFilters(req, res);
+    if (!scope) return;
+    const { businessId, branchId } = scope;
+    const rows = await pool.query(
+      `SELECT
+         request_id,
+         request_type,
+         requested_plan,
+         requested_total_device_limit,
+         extra_device_count,
+         hardware_bundle,
+         amount_expected,
+         status,
+         payment_status,
+         created_at
+       FROM license_requests
+       WHERE business_id = $1
+         AND ($2::uuid IS NULL OR branch_id = $2)
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [businessId, branchId]
+    );
+    return res.json({ ok: true, rows: rows.rows || [] });
+  } catch (err) {
+    console.error("DASHBOARD LICENSE REQUESTS ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.post("/licenses/request", authUser, async (req, res) => {
+  try {
+    const scope = getScopedFilters(req, res);
+    if (!scope) return;
+    const { businessId, branchId } = scope;
+    const body = req.body || {};
+    const backendId = String(body.backend_id || "").trim();
+    if (!backendId) {
+      return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "backend_id required" });
+    }
+    const backend = await pool.query(
+      `SELECT id, business_id, branch_id, machine_id
+       FROM backend_devices
+       WHERE id = $1`,
+      [backendId]
+    );
+    if (!backend.rows.length) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Backend not found" });
+    }
+    const row = backend.rows[0];
+    if (String(row.business_id || "") !== String(businessId || "")) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in business scope" });
+    }
+    if (branchId && String(row.branch_id || "") !== String(branchId || "")) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in branch scope" });
+    }
+
+    const requestType = String(body.request_type || "new_license").trim();
+    const requestedPlan = normalizePlan(body.requested_plan || body.plan || "Starter");
+    const extraDeviceCount = Math.max(0, Number(body.extra_device_count || 0));
+    const currentPlan = normalizePlan(body.current_plan || requestedPlan);
+    const currentTotal = Number(body.current_total_device_limit || baseLimitForPlan(currentPlan));
+    const baseLimit = baseLimitForPlan(requestedPlan);
+    const requestedTotal =
+      requestType === "device_addon"
+        ? currentTotal + extraDeviceCount
+        : baseLimit + extraDeviceCount;
+    const hardwareBundle = String(body.hardware_bundle || "No Printer");
+    const amountExpected = calcAmountExpected({
+      requestType,
+      plan: requestedPlan,
+      hardwareBundle,
+      extraCount: extraDeviceCount
+    });
+
+    const businessName = String(body.business_name || "").trim();
+    const contactPerson = String(body.contact_person || "").trim();
+    const email = String(body.email || "").trim();
+    const phone = String(body.phone || "").trim();
+    const notes = String(body.notes || "").trim();
+
+    const requestId = String(body.request_id || "").trim() || `REQ-${Date.now()}`;
+
+    const insert = await pool.query(
+      `INSERT INTO license_requests (
+         request_id,
+         business_id,
+         branch_id,
+         backend_id,
+         machine_id,
+         business_name,
+         contact_person,
+         email,
+         phone,
+         request_type,
+         requested_plan,
+         extra_device_count,
+         requested_total_device_limit,
+         current_plan,
+         current_total_device_limit,
+         hardware_bundle,
+         amount_expected,
+         notes,
+         requested_at,
+         status,
+         payment_status,
+         created_at,
+         updated_at
+       ) VALUES (
+         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+         NOW(),'PENDING','PENDING',NOW(),NOW()
+       ) RETURNING request_id`,
+      [
+        requestId,
+        businessId,
+        row.branch_id,
+        backendId,
+        row.machine_id,
+        businessName,
+        contactPerson,
+        email,
+        phone,
+        requestType,
+        requestedPlan,
+        extraDeviceCount,
+        requestedTotal,
+        currentPlan,
+        currentTotal,
+        hardwareBundle,
+        amountExpected,
+        notes
+      ]
+    );
+
+    return res.json({ ok: true, request_id: insert.rows[0]?.request_id || requestId });
+  } catch (err) {
+    console.error("DASHBOARD LICENSE REQUEST ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
 });

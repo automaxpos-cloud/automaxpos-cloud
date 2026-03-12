@@ -77,6 +77,10 @@ router.post("/backends/rotate-token", auth, registrationController.rotateBackend
 
 router.post("/backend/heartbeat", auth, backendController.heartbeat);
 router.get("/license/current", auth, licenseController.current);
+router.post("/licenses/request", auth, licenseController.request);
+router.get("/licenses/status", auth, licenseController.status);
+router.get("/licenses/pull", auth, licenseController.pull);
+router.post("/licenses/activate", auth, licenseController.activate);
 router.post("/licenses/sync", auth, licenseSyncController.syncBackendLicense);
 router.post("/sales/sync", auth, salesController.syncSales);
 router.post("/returns/sync", auth, returnsController.syncReturns);

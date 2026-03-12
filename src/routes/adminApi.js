@@ -115,10 +115,21 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.id,
         lr.request_id,
         lr.customer_name,
+        lr.business_name,
+        lr.contact_person,
         lr.email,
         lr.phone,
         lr.plan,
         lr.device_limit,
+        lr.request_type,
+        lr.requested_plan,
+        lr.requested_total_device_limit,
+        lr.extra_device_count,
+        lr.current_plan,
+        lr.current_total_device_limit,
+        lr.hardware_bundle,
+        lr.amount_expected,
+        lr.notes,
         lr.machine_id,
         lr.backend_id,
         lr.business_id,
@@ -140,6 +151,8 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         $1 = '' OR
         lr.request_id ILIKE '%' || $1 || '%' OR
         lr.customer_name ILIKE '%' || $1 || '%' OR
+        lr.business_name ILIKE '%' || $1 || '%' OR
+        lr.contact_person ILIKE '%' || $1 || '%' OR
         lr.email ILIKE '%' || $1 || '%' OR
         lr.machine_id ILIKE '%' || $1 || '%'
       )

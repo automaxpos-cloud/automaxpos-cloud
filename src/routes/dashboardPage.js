@@ -534,49 +534,123 @@ router.get("/", (req, res) => {
             <label class="muted">Backend</label>
             <select id="license_backend" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);"></select>
           </div>
-          <div style="min-width:200px;">
-            <label class="muted">Plan</label>
-            <select id="license_plan" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);">
-              <option value="Starter">Starter (1)</option>
-              <option value="Standard">Standard (3)</option>
-              <option value="Business">Business (5)</option>
-              <option value="Enterprise">Enterprise (Unlimited)</option>
-            </select>
+          <div style="min-width:260px;">
+            <label class="muted">Backend ID</label>
+            <input id="license_backend_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
-          <div style="min-width:200px;">
-            <label class="muted">Device Limit (override)</label>
-            <input id="license_device_limit" type="number" min="0" placeholder="auto" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          <div style="min-width:260px;">
+            <label class="muted">Machine ID</label>
+            <input id="license_machine_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
-          <button class="btn" id="license_issue_btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--accent);color:#fff;">Activate / Update</button>
-          <button class="btn" id="license_renew_btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Renew 2 Years</button>
-          <div id="license_status" class="muted"></div>
+          <div style="min-width:260px;">
+            <label class="muted">Business ID</label>
+            <input id="license_business_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
+          <div style="min-width:260px;">
+            <label class="muted">Branch ID</label>
+            <input id="license_branch_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
         </div>
       </div>
 
       <div class="section">
-        <h2>Current License</h2>
-        <div id="license-empty" class="empty" style="display:none;">No license found for selected backend.</div>
-        <div class="grid cards">
-          <div class="card">
-            <h3>License ID</h3>
-            <div class="value" id="license_id">--</div>
-            <div class="muted" id="license_status_text" style="margin-top:6px;">--</div>
+        <h2>License Request</h2>
+        <div class="card" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+          <div>
+            <label class="muted">Business Name</label>
+            <input id="req_business_name" type="text" placeholder="PF STUDIOS" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
           </div>
-          <div class="card">
-            <h3>Plan</h3>
-            <div class="value" id="license_plan_text">--</div>
-            <div class="muted" id="license_device_limit_text" style="margin-top:6px;">--</div>
+          <div>
+            <label class="muted">Contact Person</label>
+            <input id="req_contact_person" type="text" placeholder="Owner name" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
           </div>
-          <div class="card">
-            <h3>Issued</h3>
-            <div class="value" id="license_issued_at">--</div>
+          <div>
+            <label class="muted">Email</label>
+            <input id="req_email" type="email" placeholder="owner@email.com" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
           </div>
-          <div class="card">
-            <h3>Expires</h3>
-            <div class="value" id="license_expires_at">--</div>
-            <div class="muted" id="license_grace_ends_at" style="margin-top:6px;">--</div>
+          <div>
+            <label class="muted">Phone</label>
+            <input id="req_phone" type="text" placeholder="Phone number" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div>
+            <label class="muted">Request Type</label>
+            <select id="req_type" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);">
+              <option value="new_license">New License</option>
+              <option value="renewal">Renewal</option>
+              <option value="device_addon">Extra Device Add-On</option>
+              <option value="upgrade">Plan Upgrade</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted">Current Plan</label>
+            <input id="req_current_plan" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
+          <div>
+            <label class="muted">Current Total Devices</label>
+            <input id="req_current_total" type="number" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
+          <div>
+            <label class="muted">Requested Plan</label>
+            <select id="req_plan" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);">
+              <option value="Starter">Starter (1)</option>
+              <option value="Standard">Standard (3)</option>
+              <option value="Business">Business (5)</option>
+              <option value="Enterprise">Enterprise (10)</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted">Extra Device Count</label>
+            <input id="req_extra_devices" type="number" min="0" value="0" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div>
+            <label class="muted">Requested Total Devices</label>
+            <input id="req_total_devices" type="number" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
+          <div>
+            <label class="muted">Hardware Bundle (sales only)</label>
+            <select id="req_hardware_bundle" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);">
+              <option value="No Printer">No Printer</option>
+              <option value="58mm Thermal Bluetooth Printer">58mm Thermal Bluetooth Printer</option>
+              <option value="80mm Thermal Bluetooth Printer">80mm Thermal Bluetooth Printer</option>
+            </select>
+          </div>
+          <div>
+            <label class="muted">Estimated Amount</label>
+            <input id="req_amount_expected" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
+          <div style="grid-column:1/-1;">
+            <label class="muted">Notes</label>
+            <textarea id="req_notes" rows="3" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);"></textarea>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;grid-column:1/-1;">
+            <button class="btn" id="license_request_btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--accent);color:#fff;">Send License Request</button>
+            <div id="license_request_status" class="muted"></div>
           </div>
         </div>
+      </div>
+
+      <div class="section">
+        <h2>Recent Requests</h2>
+        <div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <button class="btn" id="license_requests_refresh" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Refresh</button>
+          <div id="license_requests_status" class="muted"></div>
+        </div>
+        <div id="license-requests-empty" class="empty" style="display:none;">No license requests yet.</div>
+        <table id="license-requests-table" style="width:100%;border-collapse:collapse;margin-top:12px;">
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Type</th>
+              <th>Plan</th>
+              <th>Devices</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Payment</th>
+              <th>Submitted</th>
+            </tr>
+          </thead>
+          <tbody id="license-requests-body"></tbody>
+        </table>
       </div>
     </section>
   </main>
@@ -1671,16 +1745,14 @@ router.get("/", (req, res) => {
       }
     }
 
-    function setLicenseStatus(text, color) {
-      const status = byId("license_status");
-      if (!status) return;
-      status.textContent = text || "";
-      status.style.color = color || "var(--muted)";
-    }
-
     function setText(id, value) {
       const el = byId(id);
       if (el) el.textContent = value;
+    }
+
+    function setInput(id, value) {
+      const el = byId(id);
+      if (el) el.value = value == null ? "" : String(value);
     }
 
     function normalizePlanValue(plan, deviceLimit) {
@@ -1713,14 +1785,67 @@ router.get("/", (req, res) => {
       return "Business";
     }
 
-    function clearLicenseFields() {
-      setText("license_id", "--");
-      setText("license_plan_text", "--");
-      setText("license_device_limit_text", "--");
-      setText("license_issued_at", "--");
-      setText("license_expires_at", "--");
-      setText("license_grace_ends_at", "--");
-      setText("license_status_text", "--");
+    function baseLimitForPlan(plan) {
+      const p = String(plan || "").trim();
+      if (p === "Starter") return 1;
+      if (p === "Standard") return 3;
+      if (p === "Business") return 5;
+      if (p === "Enterprise") return 10;
+      return 1;
+    }
+
+    function calcAmountExpected(requestType, plan, hardwareBundle, extraCount) {
+      const type = String(requestType || "").toLowerCase();
+      const bundle = String(hardwareBundle || "No Printer");
+      const prices = {
+        Starter: {
+          "No Printer": 5500,
+          "58mm Thermal Bluetooth Printer": 6500,
+          "80mm Thermal Bluetooth Printer": 8000
+        },
+        Standard: {
+          "No Printer": 6500,
+          "58mm Thermal Bluetooth Printer": 7500,
+          "80mm Thermal Bluetooth Printer": 9000
+        },
+        Business: {
+          "No Printer": 7500,
+          "58mm Thermal Bluetooth Printer": 8500,
+          "80mm Thermal Bluetooth Printer": 10000
+        },
+        Enterprise: {
+          "No Printer": 10000,
+          "58mm Thermal Bluetooth Printer": 11000,
+          "80mm Thermal Bluetooth Printer": 12500
+        }
+      };
+      if (type === "device_addon") {
+        return Math.max(0, Number(extraCount || 0)) * 500;
+      }
+      if (type === "new_license" || type === "upgrade") {
+        const p = String(plan || "Starter");
+        return prices[p]?.[bundle] || null;
+      }
+      return null;
+    }
+
+    function setLicenseRequestStatus(text, color) {
+      const status = byId("license_request_status");
+      if (!status) return;
+      status.textContent = text || "";
+      status.style.color = color || "var(--muted)";
+    }
+
+    function clearLicenseRequestFields() {
+      setInput("license_backend_id", "");
+      setInput("license_machine_id", "");
+      setInput("license_business_id", "");
+      setInput("license_branch_id", "");
+      setInput("req_current_plan", "");
+      setInput("req_current_total", "");
+      setInput("req_total_devices", "");
+      setInput("req_amount_expected", "");
+      setLicenseRequestStatus("", "var(--muted)");
     }
 
     async function loadLicenseBackends() {
@@ -1746,78 +1871,147 @@ router.get("/", (req, res) => {
         const opt = document.createElement("option");
         opt.value = row.backend_id || row.id;
         opt.textContent = row.backend_name || row.backend_id || "Backend";
+        opt.dataset.machineId = row.machine_id || "";
+        opt.dataset.businessId = row.business_id || "";
+        opt.dataset.branchId = row.branch_id || "";
         sel.appendChild(opt);
       });
-      clearLicenseFields();
+      clearLicenseRequestFields();
     }
 
-    async function loadLicenseDetails() {
-      const backendId = byId("license_backend")?.value || "";
-      const empty = byId("license-empty");
-      if (!backendId) {
-        if (empty) empty.style.display = "block";
-        clearLicenseFields();
+    function applyBackendSelection() {
+      const sel = byId("license_backend");
+      const opt = sel?.selectedOptions?.[0];
+      if (!sel || !opt || !sel.value) {
+        setInput("license_backend_id", "");
+        setInput("license_machine_id", "");
+        setInput("license_business_id", "");
+        setInput("license_branch_id", "");
         return;
       }
-      const url = "/api/cloud/licenses/current?backend_id=" + encodeURIComponent(backendId);
+      setInput("license_backend_id", sel.value);
+      setInput("license_machine_id", opt.dataset.machineId || "");
+      setInput("license_business_id", opt.dataset.businessId || "");
+      setInput("license_branch_id", opt.dataset.branchId || "");
+    }
+
+    async function loadCurrentLicenseForRequest() {
+      const backendId = byId("license_backend")?.value || "";
+      if (!backendId) {
+        setInput("req_current_plan", "");
+        setInput("req_current_total", "");
+        updateRequestDerivedFields();
+        return;
+      }
+      const url = "/api/dashboard/licenses/current?backend_id=" + encodeURIComponent(backendId);
       const res = await fetch(url, { headers: authHeaders() });
       if (!res.ok) {
-        if (empty) empty.style.display = "block";
-        clearLicenseFields();
+        setInput("req_current_plan", "");
+        setInput("req_current_total", "");
+        updateRequestDerivedFields();
         return;
       }
       const data = await res.json().catch(() => ({}));
-      const meta = data.meta || {};
-      if (empty) empty.style.display = "none";
-      setText("license_id", meta.license_id || "--");
-      setText("license_plan_text", normalizePlanValue(meta.plan, meta.device_limit) || "--");
-      const limitText = meta.device_limit == null || Number(meta.device_limit) === 0
-        ? "Unlimited"
-        : String(meta.device_limit);
-      setText("license_device_limit_text", "Device limit: " + limitText);
-      setText("license_issued_at", formatEpoch(meta.issued_at));
-      setText("license_expires_at", formatEpoch(meta.expires_at));
-      setText("license_grace_ends_at", "Grace ends: " + formatEpoch(meta.grace_ends_at));
-      setText("license_status_text", "Status: " + (meta.status || "ACTIVE"));
-
-      const planSel = byId("license_plan");
-      if (planSel) planSel.value = normalizePlanValue(meta.plan, meta.device_limit);
-      const deviceInput = byId("license_device_limit");
-      if (deviceInput) {
-        deviceInput.value =
-          meta.device_limit == null || Number(meta.device_limit) === 0
-            ? ""
-            : String(meta.device_limit);
-      }
+      const lic = data.license || null;
+      const currentPlan = lic ? normalizePlanValue(lic.plan, lic.device_limit) : "";
+      const currentTotal = lic ? Number(lic.device_limit || 0) : 0;
+      setInput("req_current_plan", currentPlan);
+      setInput("req_current_total", currentTotal || "");
+      updateRequestDerivedFields();
     }
 
-    async function issueLicense() {
-      const backendId = byId("license_backend")?.value || "";
-      if (!backendId) {
-        setLicenseStatus("Select a backend first.", "var(--warn)");
+    function updateRequestDerivedFields() {
+      const reqType = byId("req_type")?.value || "new_license";
+      const planSel = byId("req_plan");
+      const currentPlan = byId("req_current_plan")?.value || "";
+      const currentTotal = Number(byId("req_current_total")?.value || 0);
+      const extraDevices = Math.max(0, Number(byId("req_extra_devices")?.value || 0));
+      const hardwareBundle = byId("req_hardware_bundle")?.value || "No Printer";
+
+      if ((reqType === "device_addon" || reqType === "renewal") && currentPlan && planSel) {
+        planSel.value = currentPlan;
+        planSel.disabled = true;
+      } else if (planSel) {
+        planSel.disabled = false;
+      }
+
+      const selectedPlan = planSel?.value || currentPlan || "Starter";
+      const baseLimit = baseLimitForPlan(selectedPlan);
+      const requestedTotal =
+        reqType === "device_addon"
+          ? (currentTotal || baseLimit) + extraDevices
+          : baseLimit + extraDevices;
+
+      setInput("req_total_devices", requestedTotal);
+      const amountExpected = calcAmountExpected(reqType, selectedPlan, hardwareBundle, extraDevices);
+      setInput("req_amount_expected", amountExpected ? "K" + amountExpected : "");
+    }
+
+    async function loadLicenseRequests() {
+      const status = byId("license_requests_status");
+      if (status) status.textContent = "Loading...";
+      const res = await fetch("/api/dashboard/licenses/requests", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (status) status.textContent = data.message || "Failed to load requests.";
         return;
       }
-      const plan = byId("license_plan")?.value || "Starter";
-      const rawLimit = String(byId("license_device_limit")?.value || "").trim();
-      const deviceLimit = rawLimit === "" ? null : Number(rawLimit);
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      if (status) status.textContent = rows.length + " rows";
+      const empty = byId("license-requests-empty");
+      if (empty) empty.style.display = rows.length ? "none" : "block";
+      const body = byId("license-requests-body");
+      if (!body) return;
+      body.innerHTML = "";
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.request_id || "-") + "</td>" +
+          "<td>" + (r.request_type || "-") + "</td>" +
+          "<td>" + (r.requested_plan || "-") + "</td>" +
+          "<td>" + (r.requested_total_device_limit ?? r.extra_device_count ?? "-") + "</td>" +
+          "<td>" + (r.amount_expected ? "K" + r.amount_expected : "-") + "</td>" +
+          "<td>" + (r.status || "-") + "</td>" +
+          "<td>" + (r.payment_status || "-") + "</td>" +
+          "<td>" + (r.created_at ? new Date(r.created_at).toLocaleString() : "-") + "</td>";
+        body.appendChild(tr);
+      });
+    }
 
-      setLicenseStatus("Issuing license...", "var(--muted)");
-      const res = await fetch("/api/cloud/licenses/issue", {
+    async function submitLicenseRequest() {
+      const backendSel = byId("license_backend");
+      const backendId = backendSel?.value || "";
+      if (!backendId) {
+        return setLicenseRequestStatus("Select a backend first.", "var(--warn)");
+      }
+      const payload = {
+        backend_id: backendId,
+        business_name: byId("req_business_name")?.value || "",
+        contact_person: byId("req_contact_person")?.value || "",
+        email: byId("req_email")?.value || "",
+        phone: byId("req_phone")?.value || "",
+        request_type: byId("req_type")?.value || "new_license",
+        requested_plan: byId("req_plan")?.value || "Starter",
+        extra_device_count: Number(byId("req_extra_devices")?.value || 0),
+        current_plan: byId("req_current_plan")?.value || "",
+        current_total_device_limit: Number(byId("req_current_total")?.value || 0),
+        requested_total_device_limit: Number(byId("req_total_devices")?.value || 0),
+        hardware_bundle: byId("req_hardware_bundle")?.value || "No Printer",
+        notes: byId("req_notes")?.value || ""
+      };
+      setLicenseRequestStatus("Submitting request...", "var(--muted)");
+      const res = await fetch("/api/dashboard/licenses/request", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({
-          backend_id: backendId,
-          plan,
-          device_limit: deviceLimit
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setLicenseStatus(data.message || "Failed to issue license.", "var(--bad)");
+        setLicenseRequestStatus(data.message || "Failed to submit request.", "var(--bad)");
         return;
       }
-      setLicenseStatus("License issued.", "var(--good)");
-      await loadLicenseDetails();
+      setLicenseRequestStatus("Request submitted. ID: " + (data.request_id || ""), "var(--good)");
+      await loadLicenseRequests();
     }
 
     async function pollDashboardStatus() {
@@ -1927,14 +2121,23 @@ router.get("/", (req, res) => {
       bind("nav-licenses", "click", async () => {
         showSection("licenses");
         await loadLicenseBackends();
-        await loadLicenseDetails();
+        applyBackendSelection();
+        await loadCurrentLicenseForRequest();
+        await loadLicenseRequests();
       });
       bind("export_pdf_btn", "click", exportDailyPdf);
       bind("export_xlsx_btn", "click", exportExcel);
       bind("user_business", "change", loadUserBranches);
-      bind("license_backend", "change", loadLicenseDetails);
-      bind("license_issue_btn", "click", issueLicense);
-      bind("license_renew_btn", "click", issueLicense);
+      bind("license_backend", "change", async () => {
+        applyBackendSelection();
+        await loadCurrentLicenseForRequest();
+      });
+      bind("license_request_btn", "click", submitLicenseRequest);
+      bind("license_requests_refresh", "click", loadLicenseRequests);
+      bind("req_type", "change", updateRequestDerivedFields);
+      bind("req_plan", "change", updateRequestDerivedFields);
+      bind("req_extra_devices", "input", updateRequestDerivedFields);
+      bind("req_hardware_bundle", "change", updateRequestDerivedFields);
       bind("user_save_btn", "click", saveUser);
       bind("user_cancel_btn", "click", resetUserForm);
       bind("users-body", "click", handleUsersTableClick);

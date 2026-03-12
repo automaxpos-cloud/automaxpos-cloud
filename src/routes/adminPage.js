@@ -249,11 +249,15 @@ router.get(
           <thead>
             <tr>
               <th>Request ID</th>
-              <th>Business Owner</th>
+              <th>Business Name</th>
+              <th>Contact</th>
               <th>Email</th>
               <th>Phone</th>
-              <th>Plan</th>
-              <th>Device Limit</th>
+              <th>Request Type</th>
+              <th>Requested Plan</th>
+              <th>Requested Devices</th>
+              <th>Hardware Bundle</th>
+              <th>Amount</th>
               <th>Machine ID</th>
               <th>Backend ID</th>
               <th>Requested At</th>
@@ -680,14 +684,26 @@ router.get(
       byId("requests_empty").classList.toggle("hidden", (data.rows || []).length > 0);
       (data.rows || []).forEach((r) => {
         const paid = String(r.payment_status || "").toUpperCase() === "PAID";
+        const businessName = r.business_name || r.customer_name || "-";
+        const contactName = r.contact_person || "-";
+        const requestedPlan = r.requested_plan || r.plan || "-";
+        const requestedDevices =
+          r.requested_total_device_limit ??
+          r.device_limit ??
+          r.extra_device_count ??
+          "-";
         const tr = document.createElement("tr");
         tr.innerHTML =
           "<td><button class='btn' data-copy='" + (r.request_id || r.id || "") + "'>Copy</button> " + (r.request_id || r.id || "-") + "</td>" +
-          "<td>" + (r.customer_name || "-") + "</td>" +
+          "<td>" + businessName + "</td>" +
+          "<td>" + contactName + "</td>" +
           "<td>" + (r.email || "-") + "</td>" +
           "<td>" + (r.phone || "-") + "</td>" +
-          "<td>" + (r.plan || "-") + "</td>" +
-          "<td>" + (r.device_limit ?? "-") + "</td>" +
+          "<td>" + (r.request_type || "-") + "</td>" +
+          "<td>" + requestedPlan + "</td>" +
+          "<td>" + requestedDevices + "</td>" +
+          "<td>" + (r.hardware_bundle || "-") + "</td>" +
+          "<td>" + (r.amount_expected != null ? "K" + r.amount_expected : "-") + "</td>" +
           "<td>" + (r.machine_id ? r.machine_id.slice(0, 10) + "..." : "-") + "</td>" +
           "<td>" + (r.backend_id || "-") + "</td>" +
           "<td>" + (r.requested_at ? new Date(r.requested_at).toLocaleString() : "-") + "</td>" +
@@ -926,11 +942,19 @@ router.get(
           if (!r) return;
           renderDetails("License Request", [
             { label: "Request ID", value: r.request_id || r.id },
-            { label: "Business Owner", value: r.customer_name },
+            { label: "Business Name", value: r.business_name || r.customer_name },
+            { label: "Contact Person", value: r.contact_person || "-" },
             { label: "Email", value: r.email },
             { label: "Phone", value: r.phone },
-            { label: "Plan", value: r.plan },
-            { label: "Device Limit", value: r.device_limit },
+            { label: "Request Type", value: r.request_type || "-" },
+            { label: "Requested Plan", value: r.requested_plan || r.plan || "-" },
+            { label: "Requested Total Devices", value: r.requested_total_device_limit ?? r.device_limit ?? "-" },
+            { label: "Extra Device Count", value: r.extra_device_count ?? "-" },
+            { label: "Current Plan", value: r.current_plan || "-" },
+            { label: "Current Total Devices", value: r.current_total_device_limit ?? "-" },
+            { label: "Hardware Bundle", value: r.hardware_bundle || "-" },
+            { label: "Amount Expected", value: r.amount_expected != null ? "K" + r.amount_expected : "-" },
+            { label: "Notes", value: r.notes || "-" },
             { label: "Machine ID", value: r.machine_id },
             { label: "Backend ID", value: r.backend_id, warn: !r.backend_id },
             { label: "Business ID", value: r.business_id, warn: !r.business_id },
