@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
@@ -61,6 +62,7 @@ app.use("/dashboard", dashboardPage);
 app.use("/login", dashboardPage);
 app.use("/api/dashboard", dashboardApi);
 app.use("/jpmax-admin", adminPage);
+app.use("/downloads", express.static(path.join(__dirname, "..", "downloads")));
 app.use("/admin", (req, res) => {
   const target = "/jpmax-admin" + (req.path || "");
   return res.redirect(302, target);

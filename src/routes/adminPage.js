@@ -304,6 +304,13 @@ router.get(
       <section id="section-manual" class="hidden">
         <h1>Manual License Manager</h1>
         <div class="muted">Issue and manage signed licenses from the cloud generator.</div>
+        <div class="card" style="margin-top:10px;">
+          <div class="row">
+            <div class="muted" style="flex:1;">Download the latest AutoMax License Generator executables.</div>
+            <a class="btn" href="/downloads/AutoMax_License_Generator_GUI.exe">Download GUI</a>
+            <a class="btn" href="/downloads/AutoMax_License_Generator.exe">Download CLI</a>
+          </div>
+        </div>
         <div class="card" style="margin-top:12px;">
           <div class="row">
             <div>
