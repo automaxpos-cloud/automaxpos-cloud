@@ -10,6 +10,7 @@ const registrationController = require("../controllers/registrationController");
 const adminJwt = require("../middleware/adminJwt");
 const inventorySnapshotController = require("../controllers/inventorySnapshotController");
 const registerActivityController = require("../controllers/registerActivityController");
+const licenseSyncController = require("../controllers/licenseSyncController");
 
 const router = express.Router();
 
@@ -76,6 +77,7 @@ router.post("/backends/rotate-token", auth, registrationController.rotateBackend
 
 router.post("/backend/heartbeat", auth, backendController.heartbeat);
 router.get("/license/current", auth, licenseController.current);
+router.post("/licenses/sync", auth, licenseSyncController.syncBackendLicense);
 router.post("/sales/sync", auth, salesController.syncSales);
 router.post("/returns/sync", auth, returnsController.syncReturns);
 router.post("/inventory/snapshot", auth, inventorySnapshotController.syncSnapshot);

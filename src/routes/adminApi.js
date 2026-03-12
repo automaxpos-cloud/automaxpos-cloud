@@ -17,6 +17,37 @@ function normalizePaymentMethod(value) {
   return allowed.has(raw) ? raw : null;
 }
 
+async function logAudit({ admin, action, backendId, businessId, licenseId, oldValue, newValue }) {
+  try {
+    await pool.query(
+      `
+      INSERT INTO license_audit_logs (
+        admin_user,
+        action,
+        backend_id,
+        business_id,
+        license_id,
+        old_value_json,
+        new_value_json,
+        created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+      `,
+      [
+        admin?.username || "admin",
+        action,
+        backendId || null,
+        businessId || null,
+        licenseId || null,
+        oldValue ? JSON.stringify(oldValue) : null,
+        newValue ? JSON.stringify(newValue) : null
+      ]
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("LICENSE AUDIT LOG FAILED:", err?.message || err);
+  }
+}
+
 function requireRole(allowed) {
   const allowedSet = new Set((allowed || []).map((r) => String(r).toUpperCase()));
   return (req, res, next) => {
@@ -33,16 +64,20 @@ router.get("/summary", adminJwt, async (_req, res) => {
     const pendingReq = await pool.query(
       `SELECT COUNT(*) AS c FROM license_requests WHERE status='PENDING'`
     );
-    const issuedLic = await pool.query(
-      `SELECT COUNT(*) AS c FROM backend_licenses WHERE status='ACTIVE'`
-    );
+    const issuedLic = await pool.query(`SELECT COUNT(*) AS c FROM backend_licenses`);
     const revokedLic = await pool.query(
       `SELECT COUNT(*) AS c FROM backend_licenses WHERE status='REVOKED'`
     );
-    const businesses = await pool.query(`SELECT COUNT(*) AS c FROM businesses`);
-    const backends = await pool.query(
-      `SELECT COUNT(*) AS c FROM backend_devices WHERE is_active=TRUE`
+    const activeBusinesses = await pool.query(
+      `
+      SELECT COUNT(DISTINCT business_id) AS c
+      FROM backend_licenses
+      WHERE status='ACTIVE'
+        AND (issued_at IS NULL OR issued_at <= NOW())
+        AND (expires_at IS NULL OR expires_at >= NOW())
+      `
     );
+    const backends = await pool.query(`SELECT COUNT(*) AS c FROM backend_devices`);
     const expiringSoon = await pool.query(
       `SELECT COUNT(*) AS c
        FROM backend_licenses
@@ -55,7 +90,7 @@ router.get("/summary", adminJwt, async (_req, res) => {
       ok: true,
       pending_requests: Number(pendingReq.rows[0]?.c || 0),
       issued_licenses: Number(issuedLic.rows[0]?.c || 0),
-      active_businesses: Number(businesses.rows[0]?.c || 0),
+      active_businesses: Number(activeBusinesses.rows[0]?.c || 0),
       active_backends: Number(backends.rows[0]?.c || 0),
       expiring_soon: Number(expiringSoon.rows[0]?.c || 0),
       revoked_licenses: Number(revokedLic.rows[0]?.c || 0)
@@ -268,12 +303,24 @@ router.post(
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
     const result = await pool.query(
-      `UPDATE backend_licenses SET status='REVOKED', updated_at=NOW() WHERE id=$1 RETURNING id`,
+      `UPDATE backend_licenses
+       SET status='REVOKED', updated_at=NOW()
+       WHERE id=$1
+       RETURNING id, backend_id, business_id, license_id`,
       [id]
     );
     if (!result.rows.length) {
       return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     }
+    await logAudit({
+      admin: req.admin,
+      action: "LICENSE_REVOKE",
+      backendId: result.rows[0].backend_id,
+      businessId: result.rows[0].business_id,
+      licenseId: result.rows[0].license_id,
+      oldValue: { status: "ACTIVE" },
+      newValue: { status: "REVOKED" }
+    });
     return res.json({ ok: true });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -292,7 +339,9 @@ router.post(
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
     const row = await pool.query(
-      `SELECT backend_id, plan, device_limit FROM backend_licenses WHERE id=$1`,
+      `SELECT backend_id, business_id, license_id, plan, device_limit, expires_at
+       FROM backend_licenses
+       WHERE id=$1`,
       [id]
     );
     if (!row.rows.length) {
@@ -302,6 +351,15 @@ router.post(
       backendId: row.rows[0].backend_id,
       plan: row.rows[0].plan,
       deviceLimitOverride: row.rows[0].device_limit
+    });
+    await logAudit({
+      admin: req.admin,
+      action: "LICENSE_RENEW",
+      backendId: lic.backend_id,
+      businessId: lic.business_id,
+      licenseId: lic.license_id,
+      oldValue: { expires_at: row.rows[0].expires_at },
+      newValue: { expires_at: lic.expires_at }
     });
     return res.json({ ok: true, license: lic });
   } catch (err) {
@@ -317,12 +375,23 @@ router.get("/licenses/:id/json", adminJwt, async (req, res) => {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
     const row = await pool.query(
-      `SELECT license_id, payload_b64, sig_b64 FROM backend_licenses WHERE id=$1`,
+      `SELECT id, backend_id, business_id, license_id, payload_b64, sig_b64
+       FROM backend_licenses
+       WHERE id=$1`,
       [id]
     );
     if (!row.rows.length) {
       return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     }
+    await logAudit({
+      admin: req.admin,
+      action: "LICENSE_DOWNLOAD",
+      backendId: row.rows[0].backend_id,
+      businessId: row.rows[0].business_id,
+      licenseId: row.rows[0].license_id,
+      oldValue: null,
+      newValue: null
+    });
     return res.json({
       ok: true,
       license: {
@@ -357,6 +426,15 @@ router.post(
         deviceLimitOverride: Number.isFinite(deviceLimit) ? deviceLimit : null,
         expiresAtOverride: expiresAt || null
       });
+      await logAudit({
+        admin: req.admin,
+        action: "LICENSE_CREATE",
+        backendId: lic.backend_id,
+        businessId: lic.business_id,
+        licenseId: lic.license_id,
+        oldValue: null,
+        newValue: lic
+      });
       return res.json({ ok: true, license: lic });
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -375,7 +453,9 @@ router.post(
       const id = String(req.params.id || "").trim();
       if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
       const row = await pool.query(
-        `SELECT backend_id, plan, device_limit FROM backend_licenses WHERE id=$1`,
+        `SELECT id, backend_id, business_id, license_id, plan, device_limit, expires_at
+         FROM backend_licenses
+         WHERE id=$1`,
         [id]
       );
       if (!row.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
@@ -389,6 +469,19 @@ router.post(
         plan,
         deviceLimitOverride: Number.isFinite(deviceLimit) ? deviceLimit : null,
         expiresAtOverride: expiresAt || null
+      });
+      await logAudit({
+        admin: req.admin,
+        action: "LICENSE_UPDATE",
+        backendId: lic.backend_id,
+        businessId: lic.business_id,
+        licenseId: lic.license_id,
+        oldValue: {
+          plan: row.rows[0].plan,
+          device_limit: row.rows[0].device_limit,
+          expires_at: row.rows[0].expires_at
+        },
+        newValue: lic
       });
       return res.json({ ok: true, license: lic });
     } catch (err) {

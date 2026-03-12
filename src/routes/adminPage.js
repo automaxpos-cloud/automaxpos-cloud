@@ -638,13 +638,28 @@ router.get(
     async function loadSummary() {
       const res = await fetch("/api/admin/summary", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) return setToast("Failed to load summary.", "var(--bad)");
-      byId("sum_pending").textContent = data.pending_requests ?? "--";
-      byId("sum_issued").textContent = data.issued_licenses ?? "--";
-      byId("sum_businesses").textContent = data.active_businesses ?? "--";
-      byId("sum_backends").textContent = data.active_backends ?? "--";
-      byId("sum_expiring").textContent = data.expiring_soon ?? "--";
-      byId("sum_revoked").textContent = data.revoked_licenses ?? "--";
+      if (!res.ok) {
+        setToast("Failed to load summary.", "var(--bad)");
+        byId("sum_pending").textContent = "Error";
+        byId("sum_issued").textContent = "Error";
+        byId("sum_businesses").textContent = "Error";
+        byId("sum_backends").textContent = "Error";
+        byId("sum_expiring").textContent = "Error";
+        byId("sum_revoked").textContent = "Error";
+        return;
+      }
+      const pending = Number(data.pending_requests ?? 0);
+      const issued = Number(data.issued_licenses ?? 0);
+      const businesses = Number(data.active_businesses ?? 0);
+      const backends = Number(data.active_backends ?? 0);
+      const expiring = Number(data.expiring_soon ?? 0);
+      const revoked = Number(data.revoked_licenses ?? 0);
+      byId("sum_pending").textContent = pending ? String(pending) : "No pending requests";
+      byId("sum_issued").textContent = issued ? String(issued) : "No issued licenses yet";
+      byId("sum_businesses").textContent = businesses ? String(businesses) : "No active businesses";
+      byId("sum_backends").textContent = backends ? String(backends) : "No backends registered";
+      byId("sum_expiring").textContent = expiring ? String(expiring) : "No expiring licenses";
+      byId("sum_revoked").textContent = revoked ? String(revoked) : "No revoked licenses";
     }
 
     async function loadRequests() {
@@ -654,8 +669,9 @@ router.get(
       const res = await fetch(url, { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        byId("requests_status").textContent = "Failed to load.";
-        return setToast("Failed to load requests.", "var(--bad)");
+        const msg = data?.message || data?.error || "Failed to load requests.";
+        byId("requests_status").textContent = msg;
+        return setToast(msg, "var(--bad)");
       }
       const body = byId("requests_body");
       body.innerHTML = "";
@@ -695,8 +711,9 @@ router.get(
       const res = await fetch("/api/admin/licenses", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        byId("licenses_status").textContent = "Failed to load.";
-        return setToast("Failed to load licenses.", "var(--bad)");
+        const msg = data?.message || data?.error || "Failed to load licenses.";
+        byId("licenses_status").textContent = msg;
+        return setToast(msg, "var(--bad)");
       }
       const body = byId("licenses_body");
       body.innerHTML = "";
@@ -732,8 +749,9 @@ router.get(
       const res = await fetch("/api/admin/backends", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        byId("backends_status").textContent = "Failed to load.";
-        return setToast("Failed to load backends.", "var(--bad)");
+        const msg = data?.message || data?.error || "Failed to load backends.";
+        byId("backends_status").textContent = msg;
+        return setToast(msg, "var(--bad)");
       }
       const body = byId("backends_body");
       body.innerHTML = "";
