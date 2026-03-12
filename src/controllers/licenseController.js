@@ -104,8 +104,9 @@ async function request(req, res) {
         return res.status(403).json({ ok: false, error: "BRANCH_MISMATCH", message: "Branch mismatch" });
       }
     } else if (user) {
+      const role = String(user.role || user.user_role || "").toUpperCase();
       const userBusinessId = String(user.business_id || "").trim();
-      if (!userBusinessId) {
+      if (!userBusinessId && !["SUPERADMIN", "SUPER_ADMIN", "LICENSING_ADMIN", "SUPPORT_ADMIN"].includes(role)) {
         return res.status(403).json({ ok: false, error: "BUSINESS_REQUIRED", message: "business_id required" });
       }
       const backendId = String(body.backend_id || "").trim();
@@ -114,7 +115,7 @@ async function request(req, res) {
       if (!backendId || !businessId || !branchId) {
         return res.status(400).json({ ok: false, error: "MISSING_FIELDS", message: "backend_id, business_id, branch_id required" });
       }
-      if (businessId !== userBusinessId) {
+      if (userBusinessId && businessId !== userBusinessId) {
         return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH", message: "Business mismatch" });
       }
       const backendRow = await pool.query(
