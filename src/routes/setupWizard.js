@@ -256,7 +256,19 @@ router.get("/", (req, res) => {
     .match.ok { color: var(--good); }
     .match.bad { color: var(--bad); }
     .remember { margin-top: 10px; display:flex; gap:8px; align-items:center; color: var(--muted); }
-    .theme-toggle { background: #1f2a40; }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid #1f2a40;
+      background: #0b1220;
+      color: #e6e9ef;
+      cursor: pointer;
+    }
+    .theme-toggle:hover { border-color: #2e78ff; }
+    .theme-icon { width: 16px; height: 16px; }
     .light body { background: #f6f7fb; color: #111; }
     .light .card { background: #ffffff; border-color: #e2e6ef; }
     .light input { background: #f2f4f9; color: #111; border-color: #d9deea; }
@@ -271,7 +283,15 @@ router.get("/", (req, res) => {
         <h1>AutoMax First-Run Setup</h1>
         <div class="muted">Create your business and cloud dashboard account.</div>
       </div>
-      <button class="theme-toggle" id="themeToggle">Light / Dark</button>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+        <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/>
+          <path d="M12 2.5v2.4M12 19.1v2.4M4.1 4.1l1.7 1.7M18.2 18.2l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.1 19.9l1.7-1.7M18.2 5.8l1.7-1.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+      </button>
     </div>
 
     <div class="card">
@@ -366,10 +386,12 @@ router.get("/", (req, res) => {
       var root = document.documentElement;
       if (theme === "light") {
         root.classList.add("light");
+        root.setAttribute("data-theme", "light");
       } else {
         root.classList.remove("light");
+        root.removeAttribute("data-theme");
       }
-      localStorage.setItem("automax_setup_theme", theme);
+      localStorage.setItem("automax-theme", theme);
     }
 
     document.getElementById("submit").addEventListener("click", async function () {
@@ -418,14 +440,14 @@ router.get("/", (req, res) => {
     document.getElementById("password2").addEventListener("input", updateMatch);
     document.getElementById("remember").addEventListener("change", saveRemember);
     document.getElementById("themeToggle").addEventListener("click", function () {
-      var current = localStorage.getItem("automax_setup_theme") || "dark";
+      var current = localStorage.getItem("automax-theme") || "dark";
       applyTheme(current === "dark" ? "light" : "dark");
     });
 
     toggleInput("password", "togglePassword");
     toggleInput("password2", "togglePassword2");
     loadRemember();
-    var savedTheme = localStorage.getItem("automax_setup_theme") || "dark";
+    var savedTheme = localStorage.getItem("automax-theme") || "dark";
     applyTheme(savedTheme);
   </script>
 </body>

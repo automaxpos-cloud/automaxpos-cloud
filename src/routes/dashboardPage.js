@@ -29,6 +29,12 @@ router.get("/", (req, res) => {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AutoMax Cloud Dashboard</title>
+  <script>
+    (function () {
+      const saved = localStorage.getItem("automax-theme") || "dark";
+      document.documentElement.setAttribute("data-theme", saved);
+    })();
+  </script>
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
     :root {
@@ -43,6 +49,18 @@ router.get("/", (req, res) => {
       --warn: #facc15;
       --border: #1f2a40;
     }
+    :root[data-theme="light"] {
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --panel-2: #f7f9fc;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+      --good: #16a34a;
+      --bad: #dc2626;
+      --warn: #d97706;
+      --border: #d9e0ee;
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -55,6 +73,36 @@ router.get("/", (req, res) => {
     }
     header {
       padding: 28px 32px 10px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      color: var(--text);
+      cursor: pointer;
+    }
+    :root[data-theme="light"] .theme-toggle {
+      background: #e2e8f0;
+      color: #0f172a;
+      border-color: #cbd5e1;
+    }
+    .theme-toggle:hover {
+      border-color: var(--accent);
+    }
+    .theme-icon {
+      width: 16px;
+      height: 16px;
     }
     h1 { margin: 0 0 6px; font-size: 24px; }
     .muted { color: var(--muted); }
@@ -120,8 +168,21 @@ router.get("/", (req, res) => {
 </head>
 <body>
   <header>
-    <h1>AutoMax Cloud Dashboard</h1>
-    <div class="muted">Synced sales + backend health</div>
+    <div class="topbar">
+      <div>
+        <h1>AutoMax Cloud Dashboard</h1>
+        <div class="muted">Synced sales + backend health</div>
+      </div>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+        <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/>
+          <path d="M12 2.5v2.4M12 19.1v2.4M4.1 4.1l1.7 1.7M18.2 18.2l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.1 19.9l1.7-1.7M18.2 5.8l1.7-1.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
     <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="btn" id="nav-dashboard" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Dashboard</button>
       <button class="btn" id="nav-monitoring" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Live Monitoring</button>
@@ -1926,6 +1987,15 @@ router.get("/", (req, res) => {
         refreshAll().catch(() => {});
       }
     });
+    const themeBtn = document.getElementById("themeToggle");
+    if (themeBtn) {
+      themeBtn.addEventListener("click", () => {
+        const current = localStorage.getItem("automax-theme") || "dark";
+        const next = current === "dark" ? "light" : "dark";
+        localStorage.setItem("automax-theme", next);
+        document.documentElement.setAttribute("data-theme", next);
+      });
+    }
     init().catch((e) => {
       console.error("[DASH] init failed:", e && e.message ? e.message : e);
       showInitError("Dashboard failed to initialize. Check console.");
