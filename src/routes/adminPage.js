@@ -8,7 +8,7 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AutoMax Vendor Admin</title>
+  <title>JP Max Admin Portal - AutoMax POS Control Panel</title>
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
     :root {
@@ -163,7 +163,7 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
 <body>
   <div class="layout">
     <aside>
-      <div class="brand">AutoMax Vendor Admin</div>
+      <div class="brand">JP Max Admin Portal<div class="muted" style="margin-top:6px;">AutoMax POS Control Panel</div></div>
       <nav>
         <a href="/admin" id="nav-overview">Overview</a>
         <a href="/admin/requests" id="nav-requests">License Requests</a>
@@ -192,7 +192,7 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
     <main>
       <section id="section-overview">
         <h1>Overview</h1>
-        <div class="muted">Vendor summary</div>
+        <div class="muted">Admin summary</div>
         <div class="grid cards" style="margin-top:12px;">
           <div class="card"><h3>Pending License Requests</h3><div class="value" id="sum_pending">--</div></div>
           <div class="card"><h3>Issued Licenses</h3><div class="value" id="sum_issued">--</div></div>
@@ -215,7 +215,7 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
           <thead>
             <tr>
               <th>Request ID</th>
-              <th>Customer</th>
+              <th>Business Owner</th>
               <th>Email</th>
               <th>Phone</th>
               <th>Plan</th>
@@ -464,7 +464,7 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
       const me = await meRes.json().catch(() => ({}));
       if (!meRes.ok) {
         localStorage.removeItem(tokenKey);
-        status.textContent = "Forbidden: vendor admin only.";
+        status.textContent = "Forbidden: JP Max admin only.";
         return;
       }
       if (byId("admin_remember")?.checked) {
@@ -678,7 +678,7 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
           if (!r) return;
           renderDetails("License Request", [
             { label: "Request ID", value: r.request_id || r.id },
-            { label: "Customer", value: r.customer_name },
+            { label: "Business Owner", value: r.customer_name },
             { label: "Email", value: r.email },
             { label: "Phone", value: r.phone },
             { label: "Plan", value: r.plan },
