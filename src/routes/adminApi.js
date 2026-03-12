@@ -581,6 +581,10 @@ router.get("/catalog/backends", adminJwt, async (req, res) => {
 
 router.get("/backends", adminJwt, async (_req, res) => {
     try {
+      const exists = await pool.query(`SELECT to_regclass('public.backend_licenses') AS t`);
+      if (!exists.rows[0]?.t) {
+        return res.status(500).json({ ok: false, error: "MISSING_TABLE", message: "backend_licenses table missing" });
+      }
       const rows = await pool.query(
         `
       SELECT
@@ -600,12 +604,12 @@ router.get("/backends", adminJwt, async (_req, res) => {
           ELSE 'OFFLINE'
         END AS status,
         bl.license_id,
-        bl.plan AS license_plan,
-        bl.device_limit AS license_device_limit,
-        bl.status AS license_status,
+        COALESCE(bl.plan_name, bl.plan) AS license_plan,
+        COALESCE(bl.total_device_limit, bl.device_limit) AS license_device_limit,
+        COALESCE(bl.license_status, bl.status) AS license_status,
         lreq.request_id AS pending_request_id,
-        lreq.plan AS pending_plan,
-        lreq.device_limit AS pending_device_limit
+        COALESCE(lreq.requested_plan, lreq.plan) AS pending_plan,
+        COALESCE(lreq.requested_total_device_limit, lreq.device_limit) AS pending_device_limit
       FROM backend_devices bd
       LEFT JOIN businesses b ON b.id = bd.business_id
       LEFT JOIN branches br ON br.id = bd.branch_id
@@ -620,10 +624,19 @@ router.get("/backends", adminJwt, async (_req, res) => {
         LIMIT 1
       ) bl ON TRUE
       LEFT JOIN LATERAL (
-        SELECT lr.request_id, lr.plan, lr.device_limit
+        SELECT
+          lr.request_id,
+          lr.requested_plan,
+          lr.requested_total_device_limit,
+          lr.plan,
+          lr.device_limit,
+          lr.request_status,
+          lr.status,
+          lr.updated_at,
+          lr.requested_at
         FROM license_requests lr
         WHERE lr.machine_id = bd.machine_id
-          AND lr.status = 'ISSUED'
+          AND COALESCE(lr.request_status, lr.status) NOT IN ('ISSUED','REJECTED')
         ORDER BY lr.updated_at DESC NULLS LAST, lr.requested_at DESC NULLS LAST
         LIMIT 1
       ) lreq ON TRUE
