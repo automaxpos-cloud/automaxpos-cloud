@@ -164,7 +164,7 @@ async function getBackendLicense(backendId) {
   return res.rows[0] || null;
 }
 
-async function issueBackendLicense({ backendId, plan, deviceLimitOverride }) {
+async function issueBackendLicense({ backendId, plan, deviceLimitOverride, expiresAtOverride }) {
   const backendRes = await query(
     `SELECT id, business_id, branch_id, machine_id
      FROM backend_devices
@@ -180,7 +180,13 @@ async function issueBackendLicense({ backendId, plan, deviceLimitOverride }) {
 
   const now = new Date();
   const issuedAt = now;
-  const expiresAt = addYears(now, 2);
+  let expiresAt = addYears(now, 2);
+  if (expiresAtOverride) {
+    const overrideDate = new Date(expiresAtOverride);
+    if (Number.isFinite(overrideDate.getTime())) {
+      expiresAt = overrideDate;
+    }
+  }
   const graceEndsAt = new Date(expiresAt.getTime() + 30 * 86400 * 1000);
 
   const issuedAtSec = Math.floor(issuedAt.getTime() / 1000);

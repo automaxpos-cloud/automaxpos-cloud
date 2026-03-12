@@ -22,13 +22,16 @@ function adminJwt(req, res, next) {
 
   try {
     const payload = jwt.verify(token, secret);
-    if (!payload || (payload.role !== "SUPER_ADMIN" && payload.role !== "SUPERADMIN")) {
+    const role = String(payload?.role || "").toUpperCase();
+    const allowed = new Set(["SUPER_ADMIN", "SUPERADMIN", "LICENSING_ADMIN", "SUPPORT_ADMIN"]);
+    if (!payload || !allowed.has(role)) {
       return res.status(403).json({
         ok: false,
         message: "Forbidden",
         code: "FORBIDDEN"
       });
     }
+    payload.role = role === "SUPERADMIN" ? "SUPER_ADMIN" : role;
     req.admin = payload;
     return next();
   } catch (e) {

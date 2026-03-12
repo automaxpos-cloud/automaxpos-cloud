@@ -60,7 +60,11 @@ if (NODE_ENV !== "production") {
 app.use("/dashboard", dashboardPage);
 app.use("/login", dashboardPage);
 app.use("/api/dashboard", dashboardApi);
-app.use("/admin", adminPage);
+app.use("/jpmax-admin", adminPage);
+app.use("/admin", (req, res) => {
+  const target = "/jpmax-admin" + (req.path || "");
+  return res.redirect(302, target);
+});
 
 app.use((req, res) => {
   res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Route not found" });

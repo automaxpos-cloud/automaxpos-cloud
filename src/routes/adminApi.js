@@ -17,6 +17,17 @@ function normalizePaymentMethod(value) {
   return allowed.has(raw) ? raw : null;
 }
 
+function requireRole(allowed) {
+  const allowedSet = new Set((allowed || []).map((r) => String(r).toUpperCase()));
+  return (req, res, next) => {
+    const role = String(req.admin?.role || "").toUpperCase();
+    if (!allowedSet.has(role)) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN" });
+    }
+    return next();
+  };
+}
+
 router.get("/summary", adminJwt, async (_req, res) => {
   try {
     const pendingReq = await pool.query(
@@ -110,7 +121,11 @@ router.get("/license-requests", adminJwt, async (req, res) => {
   }
 });
 
-router.post("/license-requests/:id/confirm-payment", adminJwt, async (req, res) => {
+router.post(
+  "/license-requests/:id/confirm-payment",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
   try {
     const requestId = String(req.params.id || "").trim();
     const method = normalizePaymentMethod(req.body?.payment_method);
@@ -149,9 +164,14 @@ router.post("/license-requests/:id/confirm-payment", adminJwt, async (req, res) 
     console.error("CONFIRM PAYMENT ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
-});
+  }
+);
 
-router.post("/license-requests/:id/mark-issued", adminJwt, async (req, res) => {
+router.post(
+  "/license-requests/:id/mark-issued",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
   try {
     const requestId = String(req.params.id || "").trim();
     if (!requestId) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
@@ -175,9 +195,14 @@ router.post("/license-requests/:id/mark-issued", adminJwt, async (req, res) => {
     console.error("MARK ISSUED ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
-});
+  }
+);
 
-router.post("/license-requests/:id/reject", adminJwt, async (req, res) => {
+router.post(
+  "/license-requests/:id/reject",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
   try {
     const requestId = String(req.params.id || "").trim();
     if (!requestId) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
@@ -191,7 +216,8 @@ router.post("/license-requests/:id/reject", adminJwt, async (req, res) => {
     console.error("REJECT REQUEST ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
-});
+  }
+);
 
   router.get("/licenses", adminJwt, async (_req, res) => {
     try {
@@ -233,7 +259,11 @@ router.post("/license-requests/:id/reject", adminJwt, async (req, res) => {
   }
 });
 
-router.post("/licenses/:id/revoke", adminJwt, async (req, res) => {
+router.post(
+  "/licenses/:id/revoke",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
@@ -250,9 +280,14 @@ router.post("/licenses/:id/revoke", adminJwt, async (req, res) => {
     console.error("REVOKE LICENSE ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
-});
+  }
+);
 
-router.post("/licenses/:id/renew", adminJwt, async (req, res) => {
+router.post(
+  "/licenses/:id/renew",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
@@ -274,7 +309,8 @@ router.post("/licenses/:id/renew", adminJwt, async (req, res) => {
     console.error("RENEW LICENSE ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
-});
+  }
+);
 
 router.get("/licenses/:id/json", adminJwt, async (req, res) => {
   try {
@@ -298,6 +334,110 @@ router.get("/licenses/:id/json", adminJwt, async (req, res) => {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("LICENSE JSON ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.post(
+  "/licenses/manual",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
+    try {
+      const backendId = String(req.body?.backend_id || "").trim();
+      const plan = String(req.body?.plan || "").trim();
+      const deviceLimit = req.body?.device_limit != null ? Number(req.body.device_limit) : null;
+      const expiresAt = String(req.body?.expires_at || "").trim();
+      if (!backendId) return res.status(400).json({ ok: false, error: "BACKEND_REQUIRED" });
+      if (!plan) return res.status(400).json({ ok: false, error: "PLAN_REQUIRED" });
+
+      const lic = await licenseService.issueBackendLicense({
+        backendId,
+        plan,
+        deviceLimitOverride: Number.isFinite(deviceLimit) ? deviceLimit : null,
+        expiresAtOverride: expiresAt || null
+      });
+      return res.json({ ok: true, license: lic });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("MANUAL LICENSE CREATE ERROR:", err);
+      return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+    }
+  }
+);
+
+router.post(
+  "/licenses/:id/update",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
+    try {
+      const id = String(req.params.id || "").trim();
+      if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+      const row = await pool.query(
+        `SELECT backend_id, plan, device_limit FROM backend_licenses WHERE id=$1`,
+        [id]
+      );
+      if (!row.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+
+      const plan = String(req.body?.plan || row.rows[0].plan || "").trim();
+      const deviceLimit = req.body?.device_limit != null ? Number(req.body.device_limit) : row.rows[0].device_limit;
+      const expiresAt = String(req.body?.expires_at || "").trim();
+
+      const lic = await licenseService.issueBackendLicense({
+        backendId: row.rows[0].backend_id,
+        plan,
+        deviceLimitOverride: Number.isFinite(deviceLimit) ? deviceLimit : null,
+        expiresAtOverride: expiresAt || null
+      });
+      return res.json({ ok: true, license: lic });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("MANUAL LICENSE UPDATE ERROR:", err);
+      return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+    }
+  }
+);
+
+router.get("/catalog/businesses", adminJwt, async (_req, res) => {
+  try {
+    const rows = await pool.query(
+      `SELECT id, name FROM businesses ORDER BY name ASC`
+    );
+    return res.json({ ok: true, rows: rows.rows || [] });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN BUSINESSES ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.get("/catalog/backends", adminJwt, async (req, res) => {
+  try {
+    const businessId = String(req.query.business_id || "").trim();
+    const rows = await pool.query(
+      `
+      SELECT
+        bd.id,
+        bd.backend_name,
+        bd.machine_id,
+        bd.business_id,
+        bd.branch_id,
+        b.name AS business_name,
+        br.name AS branch_name
+      FROM backend_devices bd
+      LEFT JOIN businesses b ON b.id = bd.business_id
+      LEFT JOIN branches br ON br.id = bd.branch_id
+      WHERE ($1 = '' OR bd.business_id::text = $1)
+      ORDER BY bd.last_seen_at DESC NULLS LAST, bd.created_at DESC
+      LIMIT 500
+      `,
+      [businessId]
+    );
+    return res.json({ ok: true, rows: rows.rows || [] });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN BACKENDS CATALOG ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
 });

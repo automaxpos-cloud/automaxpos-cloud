@@ -12,6 +12,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "";
 const OWNER_EMAIL = process.env.OWNER_EMAIL || "";
 const OWNER_PASSWORD_HASH = process.env.OWNER_PASSWORD_HASH || "";
 const APP_BASE_URL = process.env.APP_BASE_URL || "";
+const CLOUD_BASE_URL = process.env.CLOUD_BASE_URL || APP_BASE_URL || "https://automaxpos-cloud.onrender.com";
 
 module.exports = {
   NODE_ENV,
@@ -27,5 +28,6 @@ module.exports = {
   SESSION_SECRET,
   OWNER_EMAIL,
   OWNER_PASSWORD_HASH,
-  APP_BASE_URL
+  APP_BASE_URL,
+  CLOUD_BASE_URL
 };

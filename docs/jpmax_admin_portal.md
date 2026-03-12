@@ -26,6 +26,10 @@
   - JP Max Admin Portal (internal)
 - /jpmax-admin/automax-pos
   - AutoMax POS Control Panel
+- /jpmax-admin/automax-pos/requests
+  - License Requests
+- /jpmax-admin/automax-pos/issued
+  - Issued Licenses
 - /jpmax-admin/automax-pos/licenses
   - Manual License Manager
 - /jpmax-admin/automax-pos/businesses

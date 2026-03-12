@@ -1,8 +1,21 @@
 const express = require("express");
+const { CLOUD_BASE_URL } = require("../config/env");
 
 const router = express.Router();
 
-router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
+router.get(
+  [
+    "/",
+    "/automax-pos",
+    "/automax-pos/requests",
+    "/automax-pos/issued",
+    "/automax-pos/licenses",
+    "/automax-pos/backends",
+    "/automax-pos/businesses",
+    "/automax-pos/sync",
+    "/settings"
+  ],
+  (_req, res) => {
   res.type("html").send(`<!doctype html>
 <html lang="en">
 <head>
@@ -165,10 +178,15 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
     <aside>
       <div class="brand">JP Max Admin Portal<div class="muted" style="margin-top:6px;">AutoMax POS Control Panel</div></div>
       <nav>
-        <a href="/admin" id="nav-overview">Overview</a>
-        <a href="/admin/requests" id="nav-requests">License Requests</a>
-        <a href="/admin/licenses" id="nav-licenses">Issued Licenses</a>
-        <a href="/admin/backends" id="nav-backends">Backends</a>
+        <a href="/jpmax-admin" id="nav-portal">JP Max Portal</a>
+        <a href="/jpmax-admin/automax-pos" id="nav-overview">AutoMax POS Overview</a>
+        <a href="/jpmax-admin/automax-pos/requests" id="nav-requests">License Requests</a>
+        <a href="/jpmax-admin/automax-pos/issued" id="nav-issued">Issued Licenses</a>
+        <a href="/jpmax-admin/automax-pos/licenses" id="nav-manual">Manual License Manager</a>
+        <a href="/jpmax-admin/automax-pos/backends" id="nav-backends">Backends</a>
+        <a href="/jpmax-admin/automax-pos/businesses" id="nav-businesses">Business Owners</a>
+        <a href="/jpmax-admin/automax-pos/sync" id="nav-sync">Sync Monitoring</a>
+        <a href="/jpmax-admin/settings" id="nav-settings">Platform Settings</a>
       </nav>
       <div class="card" id="login-card" style="margin-top:18px;">
         <div class="muted" style="margin-bottom:6px;">Admin Login</div>
@@ -190,8 +208,24 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
       </div>
     </aside>
     <main>
+      <section id="section-portal" class="hidden">
+        <h1>JP Max Admin Portal</h1>
+        <div class="muted">Internal platform control center</div>
+        <div class="grid cards" style="margin-top:12px;">
+          <div class="card">
+            <h3>AutoMax POS Control Panel</h3>
+            <div class="value">Operational Admin</div>
+            <div class="muted" style="margin-top:6px;">Manage businesses, licenses, backends, and sync.</div>
+          </div>
+          <div class="card">
+            <h3>Platform Settings</h3>
+            <div class="value">Internal</div>
+            <div class="muted" style="margin-top:6px;">Roles, access, and global settings.</div>
+          </div>
+        </div>
+      </section>
       <section id="section-overview">
-        <h1>Overview</h1>
+        <h1>AutoMax POS Control Panel</h1>
         <div class="muted">Admin summary</div>
         <div class="grid cards" style="margin-top:12px;">
           <div class="card"><h3>Pending License Requests</h3><div class="value" id="sum_pending">--</div></div>
@@ -235,7 +269,7 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
         </table>
       </section>
 
-      <section id="section-licenses" class="hidden">
+      <section id="section-issued" class="hidden">
         <h1>Issued Licenses</h1>
         <div class="toolbar">
           <button class="btn" id="licenses_refresh">Refresh</button>
@@ -260,6 +294,67 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
             </tr>
           </thead>
           <tbody id="licenses_body"></tbody>
+        </table>
+      </section>
+
+      <section id="section-manual" class="hidden">
+        <h1>Manual License Manager</h1>
+        <div class="muted">Create, edit, and revoke licenses for a selected backend.</div>
+        <div class="card" style="margin-top:12px;">
+          <div class="row">
+            <div>
+              <label class="muted">Business Owner</label>
+              <select id="manual_business" style="width:100%;"></select>
+            </div>
+            <div>
+              <label class="muted">Backend</label>
+              <select id="manual_backend" style="width:100%;"></select>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <div>
+              <label class="muted">Plan</label>
+              <select id="manual_plan" style="width:100%;">
+                <option>Starter</option>
+                <option>Standard</option>
+                <option>Business</option>
+                <option>Enterprise</option>
+              </select>
+            </div>
+            <div>
+              <label class="muted">Device Limit</label>
+              <input id="manual_device_limit" type="number" placeholder="e.g. 5" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Expires At</label>
+              <input id="manual_expires" type="date" style="width:100%;" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <div class="spacer"></div>
+            <button class="btn" id="manual_refresh">Refresh Lists</button>
+            <button class="btn primary" id="manual_create">Create / Update</button>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button class="btn" id="manual_list_refresh">Refresh Licenses</button>
+          <div class="status-line" id="manual_status"></div>
+        </div>
+        <div id="manual_empty" class="empty hidden">No licenses found.</div>
+        <table>
+          <thead>
+            <tr>
+              <th>License ID</th>
+              <th>Backend</th>
+              <th>Business</th>
+              <th>Plan</th>
+              <th>Device Limit</th>
+              <th>Expires At</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="manual_body"></tbody>
         </table>
       </section>
 
@@ -288,6 +383,43 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
           </thead>
           <tbody id="backends_body"></tbody>
         </table>
+      </section>
+
+      <section id="section-businesses" class="hidden">
+        <h1>Business Owners</h1>
+        <div class="toolbar">
+          <button class="btn" id="businesses_refresh">Refresh</button>
+          <div class="status-line" id="businesses_status"></div>
+        </div>
+        <div id="businesses_empty" class="empty hidden">No businesses found.</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Business ID</th>
+              <th>Name</th>
+            </tr>
+          </thead>
+          <tbody id="businesses_body"></tbody>
+        </table>
+      </section>
+
+      <section id="section-sync" class="hidden">
+        <h1>Sync Monitoring</h1>
+        <div class="card">
+          <div class="muted">This panel provides hosted sync monitoring for AutoMax POS backends.</div>
+          <div style="margin-top:8px;" class="muted">More detailed metrics and logs will appear here.</div>
+        </div>
+      </section>
+
+      <section id="section-settings" class="hidden">
+        <h1>Platform Settings</h1>
+        <div class="card">
+          <div class="muted">Internal JP Max settings, roles, and access controls.</div>
+          <div class="detail-item" style="margin-top:10px;">
+            <span>Cloud Base URL</span>
+            ${CLOUD_BASE_URL || "https://automaxpos-cloud.onrender.com"}
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -364,24 +496,34 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
     function setActiveNav() {
       const path = window.location.pathname;
       const map = {
-        "/admin": "nav-overview",
-        "/admin/requests": "nav-requests",
-        "/admin/licenses": "nav-licenses",
-        "/admin/backends": "nav-backends"
+        "/jpmax-admin": "nav-portal",
+        "/jpmax-admin/automax-pos": "nav-overview",
+        "/jpmax-admin/automax-pos/requests": "nav-requests",
+        "/jpmax-admin/automax-pos/issued": "nav-issued",
+        "/jpmax-admin/automax-pos/licenses": "nav-manual",
+        "/jpmax-admin/automax-pos/backends": "nav-backends",
+        "/jpmax-admin/automax-pos/businesses": "nav-businesses",
+        "/jpmax-admin/automax-pos/sync": "nav-sync",
+        "/jpmax-admin/settings": "nav-settings"
       };
       Object.values(map).forEach((id) => byId(id)?.classList.remove("active"));
-      const active = map[path] || "nav-overview";
+      const active = map[path] || "nav-portal";
       byId(active)?.classList.add("active");
     }
 
     function showSection() {
       const path = window.location.pathname;
-      const sections = ["overview", "requests", "licenses", "backends"];
+      const sections = ["portal", "overview", "requests", "issued", "manual", "backends", "businesses", "sync", "settings"];
       sections.forEach((s) => byId("section-" + s)?.classList.add("hidden"));
-      if (path.endsWith("/requests")) return byId("section-requests")?.classList.remove("hidden");
-      if (path.endsWith("/licenses")) return byId("section-licenses")?.classList.remove("hidden");
-      if (path.endsWith("/backends")) return byId("section-backends")?.classList.remove("hidden");
-      byId("section-overview")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos")) return byId("section-overview")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/requests")) return byId("section-requests")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/issued")) return byId("section-issued")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/licenses")) return byId("section-manual")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/backends")) return byId("section-backends")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/businesses")) return byId("section-businesses")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/sync")) return byId("section-sync")?.classList.remove("hidden");
+      if (path.endsWith("/settings")) return byId("section-settings")?.classList.remove("hidden");
+      byId("section-portal")?.classList.remove("hidden");
     }
 
     function badge(text, cls) {
@@ -629,6 +771,91 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
       });
     }
 
+    async function loadBusinesses() {
+      const res = await fetch("/api/admin/catalog/businesses", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      const body = byId("businesses_body");
+      body.innerHTML = "";
+      if (!res.ok) {
+        byId("businesses_status").textContent = "Failed to load.";
+        return setToast("Failed to load businesses.", "var(--bad)");
+      }
+      byId("businesses_status").textContent = (data.rows || []).length + " rows";
+      byId("businesses_empty").classList.toggle("hidden", (data.rows || []).length > 0);
+      (data.rows || []).forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.id || "-") + "</td>" +
+          "<td>" + (r.name || "-") + "</td>";
+        body.appendChild(tr);
+      });
+
+      const bizSelect = byId("manual_business");
+      if (bizSelect) {
+        bizSelect.innerHTML = "<option value=''>Select business</option>";
+        (data.rows || []).forEach((r) => {
+          const opt = document.createElement("option");
+          opt.value = r.id;
+          opt.textContent = r.name || r.id;
+          bizSelect.appendChild(opt);
+        });
+      }
+    }
+
+    async function loadBackendsCatalog() {
+      const bizId = byId("manual_business")?.value || "";
+      const url = "/api/admin/catalog/backends" + (bizId ? "?business_id=" + encodeURIComponent(bizId) : "");
+      const res = await fetch(url, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      const backendSelect = byId("manual_backend");
+      if (!backendSelect) return;
+      backendSelect.innerHTML = "<option value=''>Select backend</option>";
+      if (!res.ok) return;
+      (data.rows || []).forEach((r) => {
+        const opt = document.createElement("option");
+        const labelParts = [
+          r.backend_name || "Backend",
+          r.business_name ? " (" + r.business_name + ")" : "",
+          r.branch_name ? " - " + r.branch_name : ""
+        ];
+        opt.value = r.id;
+        opt.textContent = labelParts.join("");
+        backendSelect.appendChild(opt);
+      });
+    }
+
+    async function loadManualLicenses() {
+      byId("manual_status").textContent = "Loading...";
+      const res = await fetch("/api/admin/licenses", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        byId("manual_status").textContent = "Failed to load.";
+        return setToast("Failed to load licenses.", "var(--bad)");
+      }
+      const body = byId("manual_body");
+      body.innerHTML = "";
+      licenseMap = new Map((data.rows || []).map((r) => [String(r.id), r]));
+      byId("manual_status").textContent = (data.rows || []).length + " rows";
+      byId("manual_empty").classList.toggle("hidden", (data.rows || []).length > 0);
+      (data.rows || []).forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.license_id || "-") + "</td>" +
+          "<td>" + (r.backend_id || "-") + "</td>" +
+          "<td>" + (r.business_name || "-") + "</td>" +
+          "<td>" + (r.plan || "-") + "</td>" +
+          "<td>" + formatDeviceLimit(r.device_limit) + "</td>" +
+          "<td>" + (r.expires_at ? new Date(r.expires_at).toLocaleDateString() : "-") + "</td>" +
+          "<td>" + statusBadge(r.status) + "</td>" +
+          "<td>" +
+          "<button class='btn' data-action='edit' data-id='" + r.id + "'>Edit</button> " +
+          "<button class='btn' data-action='revoke' data-id='" + r.id + "'>Revoke</button> " +
+          "<button class='btn' data-action='download' data-id='" + r.id + "'>Download JSON</button>" +
+          "</td>";
+        body.appendChild(tr);
+      });
+    }
+
     async function refreshAll() {
       const token = localStorage.getItem(tokenKey);
       if (!token) {
@@ -638,6 +865,9 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
       await loadRequests();
       await loadLicenses();
       await loadBackends();
+      await loadBusinesses();
+      await loadBackendsCatalog();
+      await loadManualLicenses();
     }
 
     function bindTableActions() {
@@ -779,6 +1009,41 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
           ]);
         }
       });
+
+      byId("manual_body").addEventListener("click", async (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        const id = btn.dataset.id;
+        if (btn.dataset.action === "revoke") {
+          await fetch("/api/admin/licenses/" + id + "/revoke", { method: "POST", headers: authHeaders() });
+          setToast("License revoked.", "var(--warn)");
+          await loadManualLicenses();
+        }
+        if (btn.dataset.action === "download") {
+          const res = await fetch("/api/admin/licenses/" + id + "/json", { headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return;
+          const blob = new Blob([JSON.stringify(data.license, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = (data.license?.license_id || "license") + ".json";
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+        if (btn.dataset.action === "edit") {
+          const r = licenseMap.get(String(id));
+          if (!r) return;
+          byId("manual_backend").value = r.backend_id || "";
+          byId("manual_plan").value = r.plan || "Business";
+          byId("manual_device_limit").value = r.device_limit ?? "";
+          if (r.expires_at) {
+            const d = new Date(r.expires_at);
+            byId("manual_expires").value = d.toISOString().slice(0, 10);
+          }
+          setToast("Loaded license into form.", "var(--good)");
+        }
+      });
     }
 
     function bindPaymentModal() {
@@ -826,6 +1091,37 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
       byId("requests_refresh").addEventListener("click", loadRequests);
       byId("licenses_refresh").addEventListener("click", loadLicenses);
       byId("backends_refresh").addEventListener("click", loadBackends);
+      byId("businesses_refresh").addEventListener("click", loadBusinesses);
+      byId("manual_refresh").addEventListener("click", async () => {
+        await loadBusinesses();
+        await loadBackendsCatalog();
+      });
+      byId("manual_list_refresh").addEventListener("click", loadManualLicenses);
+      byId("manual_create").addEventListener("click", async () => {
+        const backendId = byId("manual_backend").value;
+        const plan = byId("manual_plan").value;
+        const deviceLimit = byId("manual_device_limit").value;
+        const expiresAt = byId("manual_expires").value;
+        const body = {
+          backend_id: backendId,
+          plan,
+          device_limit: deviceLimit ? Number(deviceLimit) : null,
+          expires_at: expiresAt || null
+        };
+        if (!backendId) return setToast("Select a backend first.", "var(--warn)");
+        const res = await fetch("/api/admin/licenses/manual", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return setToast(data.error || "Failed to create license.", "var(--bad)");
+        }
+        setToast("License created/updated.", "var(--good)");
+        await loadManualLicenses();
+      });
+      byId("manual_business").addEventListener("change", loadBackendsCatalog);
       byId("request_search").addEventListener("input", () => {
         clearTimeout(window.__reqTimer);
         window.__reqTimer = setTimeout(loadRequests, 300);
@@ -846,6 +1142,9 @@ router.get(["/", "/requests", "/licenses", "/backends"], (_req, res) => {
         if (res.ok) {
           toggleLogin(true, data.admin || {});
           await refreshAll();
+          await loadBusinesses();
+          await loadBackendsCatalog();
+          await loadManualLicenses();
           return;
         }
       }
