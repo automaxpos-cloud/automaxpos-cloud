@@ -81,42 +81,54 @@ async function request(req, res) {
   const user = req.user || null;
   const body = req.body || {};
   try {
+    // Debug log for request payload (masked)
+    console.log("[LICENSE_REQUEST] payload", {
+      backend_id: body.backend_id,
+      business_id: body.business_id,
+      branch_id: body.branch_id,
+      machine_id: body.machine_id,
+      request_type: body.request_type,
+      requested_plan: body.requested_plan,
+      requested_total_device_limit: body.requested_total_device_limit,
+      amount_expected: body.amount_expected
+    });
+
     if (backend) {
       if (body.backend_id && String(body.backend_id) !== String(backend.id)) {
-        return res.status(403).json({ ok: false, error: "BACKEND_MISMATCH" });
+        return res.status(403).json({ ok: false, error: "BACKEND_MISMATCH", message: "Backend mismatch" });
       }
       if (body.business_id && String(body.business_id) !== String(backend.business_id)) {
-        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH" });
+        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH", message: "Business mismatch" });
       }
       if (body.branch_id && String(body.branch_id) !== String(backend.branch_id)) {
-        return res.status(403).json({ ok: false, error: "BRANCH_MISMATCH" });
+        return res.status(403).json({ ok: false, error: "BRANCH_MISMATCH", message: "Branch mismatch" });
       }
     } else if (user) {
       const userBusinessId = String(user.business_id || "").trim();
       if (!userBusinessId) {
-        return res.status(403).json({ ok: false, error: "BUSINESS_REQUIRED" });
+        return res.status(403).json({ ok: false, error: "BUSINESS_REQUIRED", message: "business_id required" });
       }
       const backendId = String(body.backend_id || "").trim();
       const businessId = String(body.business_id || "").trim();
       const branchId = String(body.branch_id || "").trim();
       if (!backendId || !businessId || !branchId) {
-        return res.status(400).json({ ok: false, error: "MISSING_FIELDS" });
+        return res.status(400).json({ ok: false, error: "MISSING_FIELDS", message: "backend_id, business_id, branch_id required" });
       }
       if (businessId !== userBusinessId) {
-        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH" });
+        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH", message: "Business mismatch" });
       }
       const backendRow = await pool.query(
         `SELECT id, business_id, branch_id, machine_id FROM backend_devices WHERE id=$1`,
         [backendId]
       );
       if (!backendRow.rows.length) {
-        return res.status(404).json({ ok: false, error: "BACKEND_NOT_FOUND" });
+        return res.status(404).json({ ok: false, error: "BACKEND_NOT_FOUND", message: "Backend not found" });
       }
       if (String(backendRow.rows[0].business_id) !== businessId) {
-        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH" });
+        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH", message: "Business mismatch" });
       }
       if (String(backendRow.rows[0].branch_id) !== branchId) {
-        return res.status(403).json({ ok: false, error: "BRANCH_MISMATCH" });
+        return res.status(403).json({ ok: false, error: "BRANCH_MISMATCH", message: "Branch mismatch" });
       }
     }
 
@@ -133,7 +145,7 @@ async function request(req, res) {
       : requestedTotal;
 
     if (!businessName || !contactPerson || !email || !phone || !requestedPlan || deviceCount == null) {
-      return res.status(400).json({ ok: false, error: "MISSING_FIELDS" });
+      return res.status(400).json({ ok: false, error: "MISSING_FIELDS", message: "Missing required contact or plan fields" });
     }
 
     let backendId = backend ? backend.id : String(body.backend_id || "").trim();
@@ -235,7 +247,7 @@ async function request(req, res) {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("LICENSE REQUEST ERROR:", err);
-    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err.message || "Server error" });
   }
 }
 

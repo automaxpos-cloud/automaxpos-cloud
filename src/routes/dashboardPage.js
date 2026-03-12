@@ -1822,9 +1822,10 @@ router.get("/", (req, res) => {
       if (type === "device_addon") {
         return Math.max(0, Number(extraCount || 0)) * 500;
       }
-      if (type === "new_license" || type === "upgrade") {
+      if (type === "new_license") {
         const p = String(plan || "Starter");
-        return prices[p]?.[bundle] || null;
+        const base = prices[p]?.[bundle] || 0;
+        return base + Math.max(0, Number(extraCount || 0)) * 500;
       }
       return null;
     }
@@ -1940,11 +1941,13 @@ router.get("/", (req, res) => {
       const requestedTotal =
         reqType === "device_addon"
           ? (currentTotal || baseLimit) + extraDevices
-          : baseLimit + extraDevices;
+          : reqType === "renewal"
+            ? (currentTotal || baseLimit)
+            : baseLimit + extraDevices;
 
       setInput("req_total_devices", requestedTotal);
       const amountExpected = calcAmountExpected(reqType, selectedPlan, hardwareBundle, extraDevices);
-      setInput("req_amount_expected", amountExpected ? "K" + amountExpected : "");
+      setInput("req_amount_expected", amountExpected != null ? ("K" + Number(amountExpected).toLocaleString()) : "");
     }
 
     async function loadLicenseRequests() {
@@ -1963,7 +1966,8 @@ router.get("/", (req, res) => {
       const res = await fetch(url, { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (status) status.textContent = data.message || "Failed to load requests.";
+        const raw = data?.message || data?.error || "Failed to load requests.";
+        if (status) status.textContent = raw;
         return;
       }
       const rows = Array.isArray(data.rows) ? data.rows : [];
@@ -2000,6 +2004,8 @@ router.get("/", (req, res) => {
       if (!backendId || !businessId || !branchId || !machineId || !requestType || !requestedPlan) {
         return setLicenseRequestStatus("Missing required fields (backend, business, branch, machine, type, plan).", "var(--bad)");
       }
+      const rawAmount = String(byId("req_amount_expected")?.value || "");
+      const amountExpected = rawAmount ? Number(rawAmount.replace(/[^0-9.]/g, "")) : null;
       const payload = {
         backend_id: backendId,
         business_id: businessId,
@@ -2016,7 +2022,7 @@ router.get("/", (req, res) => {
         current_total_device_limit: Number(byId("req_current_total")?.value || 0),
         requested_total_device_limit: Number(byId("req_total_devices")?.value || 0),
         hardware_bundle: byId("req_hardware_bundle")?.value || "No Printer",
-        amount_expected: String(byId("req_amount_expected")?.value || "").replace(/^K/i, "") || null,
+        amount_expected: Number.isFinite(amountExpected) ? amountExpected : null,
         notes: byId("req_notes")?.value || ""
       };
       setLicenseRequestStatus("Submitting request...", "var(--muted)");
@@ -2025,9 +2031,17 @@ router.get("/", (req, res) => {
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify(payload)
       });
-      const data = await res.json().catch(() => ({}));
+      let data = null;
+      let rawText = "";
+      try {
+        rawText = await res.text();
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        data = {};
+      }
       if (!res.ok) {
-        setLicenseRequestStatus(data.message || "Failed to submit request.", "var(--bad)");
+        const msg = data?.message || data?.error || rawText || "Failed to submit request.";
+        setLicenseRequestStatus(msg, "var(--bad)");
         return;
       }
       setLicenseRequestStatus("Request submitted. ID: " + (data.request_id || ""), "var(--good)");
