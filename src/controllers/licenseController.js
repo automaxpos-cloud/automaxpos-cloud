@@ -77,17 +77,47 @@ async function current(req, res) {
 }
 
 async function request(req, res) {
-  const backend = req.backend || {};
+  const backend = req.backend || null;
+  const user = req.user || null;
   const body = req.body || {};
   try {
-    if (body.backend_id && String(body.backend_id) !== String(backend.id)) {
-      return res.status(403).json({ ok: false, error: "BACKEND_MISMATCH" });
-    }
-    if (body.business_id && String(body.business_id) !== String(backend.business_id)) {
-      return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH" });
-    }
-    if (body.branch_id && String(body.branch_id) !== String(backend.branch_id)) {
-      return res.status(403).json({ ok: false, error: "BRANCH_MISMATCH" });
+    if (backend) {
+      if (body.backend_id && String(body.backend_id) !== String(backend.id)) {
+        return res.status(403).json({ ok: false, error: "BACKEND_MISMATCH" });
+      }
+      if (body.business_id && String(body.business_id) !== String(backend.business_id)) {
+        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH" });
+      }
+      if (body.branch_id && String(body.branch_id) !== String(backend.branch_id)) {
+        return res.status(403).json({ ok: false, error: "BRANCH_MISMATCH" });
+      }
+    } else if (user) {
+      const userBusinessId = String(user.business_id || "").trim();
+      if (!userBusinessId) {
+        return res.status(403).json({ ok: false, error: "BUSINESS_REQUIRED" });
+      }
+      const backendId = String(body.backend_id || "").trim();
+      const businessId = String(body.business_id || "").trim();
+      const branchId = String(body.branch_id || "").trim();
+      if (!backendId || !businessId || !branchId) {
+        return res.status(400).json({ ok: false, error: "MISSING_FIELDS" });
+      }
+      if (businessId !== userBusinessId) {
+        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH" });
+      }
+      const backendRow = await pool.query(
+        `SELECT id, business_id, branch_id, machine_id FROM backend_devices WHERE id=$1`,
+        [backendId]
+      );
+      if (!backendRow.rows.length) {
+        return res.status(404).json({ ok: false, error: "BACKEND_NOT_FOUND" });
+      }
+      if (String(backendRow.rows[0].business_id) !== businessId) {
+        return res.status(403).json({ ok: false, error: "BUSINESS_MISMATCH" });
+      }
+      if (String(backendRow.rows[0].branch_id) !== branchId) {
+        return res.status(403).json({ ok: false, error: "BRANCH_MISMATCH" });
+      }
     }
 
     const businessName = String(body.business_name || "").trim();
@@ -95,15 +125,24 @@ async function request(req, res) {
     const email = String(body.email || "").trim();
     const phone = String(body.phone || "").trim();
     const requestedPlan = String(body.requested_plan || body.plan || "").trim();
-    const deviceCount = Number.isFinite(Number(body.device_count)) ? Number(body.device_count) : null;
+    const requestedTotal = Number.isFinite(Number(body.requested_total_device_limit))
+      ? Number(body.requested_total_device_limit)
+      : null;
+    const deviceCount = Number.isFinite(Number(body.device_count))
+      ? Number(body.device_count)
+      : requestedTotal;
 
     if (!businessName || !contactPerson || !email || !phone || !requestedPlan || deviceCount == null) {
       return res.status(400).json({ ok: false, error: "MISSING_FIELDS" });
     }
 
+    let backendId = backend ? backend.id : String(body.backend_id || "").trim();
+    let businessId = backend ? backend.business_id : String(body.business_id || "").trim();
+    let branchId = backend ? backend.branch_id : String(body.branch_id || "").trim();
+
     const backendRow = await pool.query(
       `SELECT machine_id FROM backend_devices WHERE id=$1`,
-      [backend.id]
+      [backendId]
     );
     const machineId = String(body.machine_id || backendRow.rows[0]?.machine_id || "").trim();
     const requestId = String(body.request_id || body.requestId || "").trim() || buildRequestId();
@@ -144,11 +183,18 @@ async function request(req, res) {
         notes,
         requested_plan,
         device_count,
-        delivery_method
+        delivery_method,
+        request_type,
+        requested_total_device_limit,
+        extra_device_count,
+        current_plan,
+        current_total_device_limit,
+        hardware_bundle,
+        amount_expected
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
         $13,$14,$15,$16,$17,NOW(),NOW(),
-        $18,$19,$20,$21,$22,$23
+        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30
       )
       `,
       [
@@ -164,9 +210,9 @@ async function request(req, res) {
         deviceCount,
         machineId,
         String(body.device_id || ""),
-        backend.id,
-        backend.business_id,
-        backend.branch_id,
+        backendId,
+        businessId,
+        branchId,
         requestedAt,
         "PENDING",
         businessName,
@@ -174,7 +220,14 @@ async function request(req, res) {
         String(body.notes || ""),
         requestedPlan,
         deviceCount,
-        "cloud_pull"
+        "cloud_pull",
+        String(body.request_type || "new_license"),
+        requestedTotal,
+        Number.isFinite(Number(body.extra_device_count)) ? Number(body.extra_device_count) : null,
+        String(body.current_plan || ""),
+        Number.isFinite(Number(body.current_total_device_limit)) ? Number(body.current_total_device_limit) : null,
+        String(body.hardware_bundle || ""),
+        Number.isFinite(Number(body.amount_expected)) ? Number(body.amount_expected) : null
       ]
     );
 
@@ -184,6 +237,61 @@ async function request(req, res) {
     console.error("LICENSE REQUEST ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
+}
+
+async function requests(req, res) {
+  const backend = req.backend || null;
+  const user = req.user || null;
+  const backendId = String(req.query.backend_id || "").trim();
+
+  if (backend) {
+    const rows = await pool.query(
+      `SELECT
+         request_id,
+         request_type,
+         requested_plan,
+         requested_total_device_limit,
+         extra_device_count,
+         hardware_bundle,
+         amount_expected,
+         status,
+         payment_status,
+         created_at
+       FROM license_requests
+       WHERE backend_id = $1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [backend.id]
+    );
+    return res.json({ ok: true, rows: rows.rows || [] });
+  }
+
+  if (!user?.business_id) {
+    return res.status(403).json({ ok: false, error: "BUSINESS_REQUIRED" });
+  }
+  if (!backendId) {
+    return res.status(400).json({ ok: false, error: "BACKEND_ID_REQUIRED" });
+  }
+  const rows = await pool.query(
+    `SELECT
+       request_id,
+       request_type,
+       requested_plan,
+       requested_total_device_limit,
+       extra_device_count,
+       hardware_bundle,
+       amount_expected,
+       status,
+       payment_status,
+       created_at
+     FROM license_requests
+     WHERE backend_id = $1
+       AND business_id = $2
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [backendId, user.business_id]
+  );
+  return res.json({ ok: true, rows: rows.rows || [] });
 }
 
 async function status(req, res) {
@@ -309,4 +417,4 @@ async function activate(req, res) {
   }
 }
 
-module.exports = { current, request, status, pull, activate };
+module.exports = { current, request, status, pull, activate, requests };

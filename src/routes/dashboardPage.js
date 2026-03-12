@@ -1950,7 +1950,17 @@ router.get("/", (req, res) => {
     async function loadLicenseRequests() {
       const status = byId("license_requests_status");
       if (status) status.textContent = "Loading...";
-      const res = await fetch("/api/dashboard/licenses/requests", { headers: authHeaders() });
+      const backendId = byId("license_backend")?.value || "";
+      if (!backendId) {
+        if (status) status.textContent = "Select a backend first.";
+        const empty = byId("license-requests-empty");
+        if (empty) empty.style.display = "block";
+        const body = byId("license-requests-body");
+        if (body) body.innerHTML = "";
+        return;
+      }
+      const url = "/api/cloud/licenses/requests?backend_id=" + encodeURIComponent(backendId);
+      const res = await fetch(url, { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (status) status.textContent = data.message || "Failed to load requests.";
@@ -1981,26 +1991,36 @@ router.get("/", (req, res) => {
     async function submitLicenseRequest() {
       const backendSel = byId("license_backend");
       const backendId = backendSel?.value || "";
-      if (!backendId) {
-        return setLicenseRequestStatus("Select a backend first.", "var(--warn)");
+      const businessId = byId("license_business_id")?.value || "";
+      const branchId = byId("license_branch_id")?.value || "";
+      const machineId = byId("license_machine_id")?.value || "";
+      const requestType = byId("req_type")?.value || "";
+      const requestedPlan = byId("req_plan")?.value || "";
+
+      if (!backendId || !businessId || !branchId || !machineId || !requestType || !requestedPlan) {
+        return setLicenseRequestStatus("Missing required fields (backend, business, branch, machine, type, plan).", "var(--bad)");
       }
       const payload = {
         backend_id: backendId,
+        business_id: businessId,
+        branch_id: branchId,
+        machine_id: machineId,
         business_name: byId("req_business_name")?.value || "",
         contact_person: byId("req_contact_person")?.value || "",
         email: byId("req_email")?.value || "",
         phone: byId("req_phone")?.value || "",
-        request_type: byId("req_type")?.value || "new_license",
-        requested_plan: byId("req_plan")?.value || "Starter",
+        request_type: requestType,
+        requested_plan: requestedPlan,
         extra_device_count: Number(byId("req_extra_devices")?.value || 0),
         current_plan: byId("req_current_plan")?.value || "",
         current_total_device_limit: Number(byId("req_current_total")?.value || 0),
         requested_total_device_limit: Number(byId("req_total_devices")?.value || 0),
         hardware_bundle: byId("req_hardware_bundle")?.value || "No Printer",
+        amount_expected: String(byId("req_amount_expected")?.value || "").replace(/^K/i, "") || null,
         notes: byId("req_notes")?.value || ""
       };
       setLicenseRequestStatus("Submitting request...", "var(--muted)");
-      const res = await fetch("/api/dashboard/licenses/request", {
+      const res = await fetch("/api/cloud/licenses/request", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify(payload)
@@ -2011,6 +2031,8 @@ router.get("/", (req, res) => {
         return;
       }
       setLicenseRequestStatus("Request submitted. ID: " + (data.request_id || ""), "var(--good)");
+      const notes = byId("req_notes");
+      if (notes) notes.value = "";
       await loadLicenseRequests();
     }
 

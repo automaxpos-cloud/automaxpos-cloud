@@ -8,6 +8,7 @@ const productController = require("../controllers/productSyncController");
 const stockController = require("../controllers/stockSyncController");
 const registrationController = require("../controllers/registrationController");
 const adminJwt = require("../middleware/adminJwt");
+const authUser = require("../middleware/authUser");
 const inventorySnapshotController = require("../controllers/inventorySnapshotController");
 const registerActivityController = require("../controllers/registerActivityController");
 const licenseSyncController = require("../controllers/licenseSyncController");
@@ -18,6 +19,16 @@ function maskSecret(value) {
   if (!value) return "(missing)";
   if (value.length <= 6) return "***";
   return `${value.slice(0, 4)}***${value.slice(-2)}`;
+}
+
+function authBackendOrUser(req, res, next) {
+  const backendId = String(req.headers["x-backend-id"] || "").trim();
+  const authHeader = String(req.headers.authorization || "");
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (backendId && token) {
+    return auth(req, res, next);
+  }
+  return authUser(req, res, next);
 }
 
 function adminOrLocalSetup(req, res, next) {
@@ -77,7 +88,8 @@ router.post("/backends/rotate-token", auth, registrationController.rotateBackend
 
 router.post("/backend/heartbeat", auth, backendController.heartbeat);
 router.get("/license/current", auth, licenseController.current);
-router.post("/licenses/request", auth, licenseController.request);
+router.post("/licenses/request", authBackendOrUser, licenseController.request);
+router.get("/licenses/requests", authBackendOrUser, licenseController.requests);
 router.get("/licenses/status", auth, licenseController.status);
 router.get("/licenses/pull", auth, licenseController.pull);
 router.post("/licenses/activate", auth, licenseController.activate);
