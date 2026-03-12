@@ -303,7 +303,7 @@ router.get(
 
       <section id="section-manual" class="hidden">
         <h1>Manual License Manager</h1>
-        <div class="muted">Create, edit, and revoke licenses for a selected backend.</div>
+        <div class="muted">Issue and manage signed licenses from the cloud generator.</div>
         <div class="card" style="margin-top:12px;">
           <div class="row">
             <div>
@@ -317,6 +317,16 @@ router.get(
           </div>
           <div class="row" style="margin-top:8px;">
             <div>
+              <label class="muted">Issue Type</label>
+              <select id="manual_issue_type" style="width:100%;">
+                <option value="new_license">New License</option>
+                <option value="renewal">Renewal</option>
+                <option value="device_addon">Extra Device Add-On</option>
+                <option value="upgrade">Plan Upgrade</option>
+                <option value="correction">Correction / Reissue</option>
+              </select>
+            </div>
+            <div>
               <label class="muted">Plan</label>
               <select id="manual_plan" style="width:100%;">
                 <option>Starter</option>
@@ -326,12 +336,60 @@ router.get(
               </select>
             </div>
             <div>
-              <label class="muted">Device Limit</label>
-              <input id="manual_device_limit" type="number" placeholder="e.g. 5" style="width:100%;" />
+              <label class="muted">Base Device Limit</label>
+              <input id="manual_base_limit" type="number" readonly style="width:100%;" />
             </div>
             <div>
-              <label class="muted">Expires At</label>
+              <label class="muted">Extra Device Count</label>
+              <input id="manual_extra_devices" type="number" min="0" value="0" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Total Device Limit</label>
+              <input id="manual_total_limit" type="number" readonly style="width:100%;" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <div>
+              <label class="muted">Issued Date</label>
+              <input id="manual_issued_at" type="date" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Expiry Date</label>
               <input id="manual_expires" type="date" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">License Status</label>
+              <select id="manual_status_select" style="width:100%;">
+                <option value="active">active</option>
+                <option value="expired">expired</option>
+                <option value="revoked">revoked</option>
+              </select>
+            </div>
+            <div>
+              <label class="muted">Previous License ID</label>
+              <input id="manual_prev_license" type="text" readonly style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">License Version</label>
+              <input id="manual_license_version" type="number" readonly style="width:100%;" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <div>
+              <label class="muted">Change Reason</label>
+              <input id="manual_change_reason" type="text" readonly style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Request ID</label>
+              <input id="manual_request_id" type="text" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Hardware Bundle</label>
+              <input id="manual_hardware_bundle" type="text" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Quoted Price</label>
+              <input id="manual_quoted_price" type="number" min="0" style="width:100%;" />
             </div>
           </div>
           <div class="row" style="margin-top:10px;">
@@ -714,6 +772,7 @@ router.get(
           "<td>" + (r.payment_amount ?? "-") + "</td>" +
           "<td>" +
           "<button class='btn' data-action='view' data-id='" + r.id + "'>View</button> " +
+          "<button class='btn' data-action='load' data-id='" + r.id + "'>Load</button> " +
           "<button class='btn' data-action='pay' data-id='" + r.id + "'>Confirm Payment</button> " +
           "<button class='btn' data-action='issue' data-id='" + r.id + "'" + (paid ? "" : " disabled") + ">Mark Issued</button> " +
           "<button class='btn' data-action='reject' data-id='" + r.id + "'>Reject</button>" +
@@ -877,17 +936,47 @@ router.get(
           "<td>" + (r.license_id || "-") + "</td>" +
           "<td>" + (r.backend_id || "-") + "</td>" +
           "<td>" + (r.business_name || "-") + "</td>" +
-          "<td>" + (r.plan || "-") + "</td>" +
+          "<td>" + (r.plan_name || r.plan || "-") + "</td>" +
           "<td>" + formatDeviceLimit(r.device_limit) + "</td>" +
           "<td>" + (r.expires_at ? new Date(r.expires_at).toLocaleDateString() : "-") + "</td>" +
           "<td>" + statusBadge(r.status) + "</td>" +
           "<td>" +
-          "<button class='btn' data-action='edit' data-id='" + r.id + "'>Edit</button> " +
+          "<button class='btn' data-action='load' data-id='" + r.id + "'>Load</button> " +
           "<button class='btn' data-action='revoke' data-id='" + r.id + "'>Revoke</button> " +
           "<button class='btn' data-action='download' data-id='" + r.id + "'>Download JSON</button>" +
           "</td>";
         body.appendChild(tr);
       });
+    }
+
+    function manualBaseLimit(plan) {
+      const p = String(plan || "").trim();
+      if (p === "Starter") return 1;
+      if (p === "Standard") return 3;
+      if (p === "Business") return 5;
+      if (p === "Enterprise") return 10;
+      return 1;
+    }
+
+    function manualChangeReason(issueType) {
+      const t = String(issueType || "").toLowerCase();
+      if (t === "renewal") return "renewal";
+      if (t === "device_addon") return "device_addon";
+      if (t === "upgrade") return "plan_upgrade";
+      if (t === "correction") return "correction";
+      return "initial_issue";
+    }
+
+    function updateManualDerived() {
+      const issueType = byId("manual_issue_type")?.value || "new_license";
+      const plan = byId("manual_plan")?.value || "Starter";
+      const base = manualBaseLimit(plan);
+      const extra = Number(byId("manual_extra_devices")?.value || 0);
+      const total = base + (Number.isFinite(extra) ? extra : 0);
+      byId("manual_base_limit").value = base;
+      byId("manual_total_limit").value = total;
+      byId("manual_change_reason").value = manualChangeReason(issueType);
+      byId("manual_plan").disabled = issueType === "device_addon";
     }
 
     async function refreshAll() {
@@ -902,6 +991,7 @@ router.get(
       await loadBusinesses();
       await loadBackendsCatalog();
       await loadManualLicenses();
+      updateManualDerived();
     }
 
     function bindTableActions() {
@@ -961,6 +1051,21 @@ router.get(
             { label: "Branch ID", value: r.branch_id, warn: !r.branch_id },
             { label: "Requested At", value: r.requested_at }
           ]);
+        }
+        if (btn.dataset.action === "load") {
+          const r = requestMap.get(String(id));
+          if (!r) return;
+          byId("manual_business").value = r.business_id || "";
+          await loadBackendsCatalog();
+          byId("manual_backend").value = r.backend_id || "";
+          byId("manual_issue_type").value = r.request_type || "new_license";
+          byId("manual_plan").value = r.requested_plan || r.plan || "Starter";
+          byId("manual_extra_devices").value = r.extra_device_count ?? 0;
+          byId("manual_request_id").value = r.request_id || "";
+          byId("manual_hardware_bundle").value = r.hardware_bundle || "";
+          byId("manual_quoted_price").value = r.amount_expected ?? "";
+          updateManualDerived();
+          setToast("Request loaded into generator.", "var(--good)");
         }
       });
 
@@ -1073,16 +1178,35 @@ router.get(
           a.click();
           URL.revokeObjectURL(url);
         }
-        if (btn.dataset.action === "edit") {
+        if (btn.dataset.action === "load") {
           const r = licenseMap.get(String(id));
           if (!r) return;
           byId("manual_backend").value = r.backend_id || "";
-          byId("manual_plan").value = r.plan || "Business";
-          byId("manual_device_limit").value = r.device_limit ?? "";
+          const reason = String(r.change_reason || "");
+          const issueType =
+            reason === "device_addon" ? "device_addon"
+            : reason === "renewal" ? "renewal"
+            : reason === "plan_upgrade" ? "upgrade"
+            : reason === "correction" ? "correction"
+            : "new_license";
+          byId("manual_issue_type").value = issueType;
+          byId("manual_plan").value = r.plan_name || r.plan || "Business";
+          byId("manual_base_limit").value = r.base_device_limit ?? "";
+          byId("manual_extra_devices").value = r.extra_device_count ?? 0;
+          byId("manual_total_limit").value = r.total_device_limit ?? r.device_limit ?? "";
+          byId("manual_prev_license").value = r.previous_license_id || "";
+          byId("manual_license_version").value = r.license_version ?? "";
+          byId("manual_change_reason").value = r.change_reason || "";
+          byId("manual_status_select").value = r.license_status || "active";
           if (r.expires_at) {
             const d = new Date(r.expires_at);
             byId("manual_expires").value = d.toISOString().slice(0, 10);
           }
+          if (r.issued_at) {
+            const d = new Date(r.issued_at);
+            byId("manual_issued_at").value = d.toISOString().slice(0, 10);
+          }
+          updateManualDerived();
           setToast("Loaded license into form.", "var(--good)");
         }
       });
@@ -1137,18 +1261,33 @@ router.get(
       byId("manual_refresh").addEventListener("click", async () => {
         await loadBusinesses();
         await loadBackendsCatalog();
+        updateManualDerived();
       });
       byId("manual_list_refresh").addEventListener("click", loadManualLicenses);
       byId("manual_create").addEventListener("click", async () => {
         const backendId = byId("manual_backend").value;
-        const plan = byId("manual_plan").value;
-        const deviceLimit = byId("manual_device_limit").value;
-        const expiresAt = byId("manual_expires").value;
+        const issueType = byId("manual_issue_type").value;
+        const planName = byId("manual_plan").value;
+        const baseDeviceLimit = byId("manual_base_limit").value;
+        const extraDeviceCount = byId("manual_extra_devices").value;
+        const issuedAt = byId("manual_issued_at").value;
+        const expiryDate = byId("manual_expires").value;
+        const licenseStatus = byId("manual_status_select").value;
+        const requestId = byId("manual_request_id").value;
+        const hardwareBundle = byId("manual_hardware_bundle").value;
+        const quotedPrice = byId("manual_quoted_price").value;
         const body = {
           backend_id: backendId,
-          plan,
-          device_limit: deviceLimit ? Number(deviceLimit) : null,
-          expires_at: expiresAt || null
+          issue_type: issueType,
+          plan_name: planName,
+          base_device_limit: baseDeviceLimit ? Number(baseDeviceLimit) : null,
+          extra_device_count: extraDeviceCount ? Number(extraDeviceCount) : 0,
+          issued_at: issuedAt || null,
+          expiry_date: expiryDate || null,
+          license_status: licenseStatus || "active",
+          request_id: requestId || null,
+          hardware_bundle: hardwareBundle || null,
+          quoted_price: quotedPrice ? Number(quotedPrice) : null
         };
         if (!backendId) return setToast("Select a backend first.", "var(--warn)");
         const res = await fetch("/api/admin/licenses/manual", {
@@ -1163,6 +1302,9 @@ router.get(
         setToast("License created/updated.", "var(--good)");
         await loadManualLicenses();
       });
+      byId("manual_issue_type").addEventListener("change", updateManualDerived);
+      byId("manual_plan").addEventListener("change", updateManualDerived);
+      byId("manual_extra_devices").addEventListener("input", updateManualDerived);
       byId("manual_business").addEventListener("change", loadBackendsCatalog);
       byId("request_search").addEventListener("input", () => {
         clearTimeout(window.__reqTimer);

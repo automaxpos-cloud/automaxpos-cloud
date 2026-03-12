@@ -1,0 +1,11 @@
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS plan_name TEXT;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS base_device_limit INTEGER;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS extra_device_count INTEGER DEFAULT 0;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS total_device_limit INTEGER;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS license_version INTEGER DEFAULT 1;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS previous_license_id TEXT;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS change_reason TEXT;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS license_status TEXT;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS request_id TEXT;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS hardware_bundle TEXT;
+ALTER TABLE backend_licenses ADD COLUMN IF NOT EXISTS quoted_price NUMERIC(14,2);

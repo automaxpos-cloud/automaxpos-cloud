@@ -62,20 +62,16 @@ function requireRole(allowed) {
 router.get("/summary", adminJwt, async (_req, res) => {
   try {
     const pendingReq = await pool.query(
-      `SELECT COUNT(*) AS c FROM license_requests WHERE status='PENDING'`
+      `SELECT COUNT(*) AS c
+       FROM license_requests
+       WHERE UPPER(COALESCE(request_status, status, 'PENDING')) = 'PENDING'`
     );
     const issuedLic = await pool.query(`SELECT COUNT(*) AS c FROM backend_licenses`);
     const revokedLic = await pool.query(
       `SELECT COUNT(*) AS c FROM backend_licenses WHERE status='REVOKED'`
     );
     const activeBusinesses = await pool.query(
-      `
-      SELECT COUNT(DISTINCT business_id) AS c
-      FROM backend_licenses
-      WHERE status='ACTIVE'
-        AND (issued_at IS NULL OR issued_at <= NOW())
-        AND (expires_at IS NULL OR expires_at >= NOW())
-      `
+      `SELECT COUNT(*) AS c FROM businesses`
     );
     const backends = await pool.query(`SELECT COUNT(*) AS c FROM backend_devices`);
     const expiringSoon = await pool.query(
@@ -234,7 +230,11 @@ router.post(
       return res.status(403).json({ ok: false, error: "PAYMENT_REQUIRED" });
     }
     await pool.query(
-      `UPDATE license_requests SET status='ISSUED', updated_at=NOW() WHERE id=$1`,
+      `UPDATE license_requests
+       SET status='ISSUED',
+           request_status=COALESCE(request_status,'issued'),
+           updated_at=NOW()
+       WHERE id=$1`,
       [requestId]
     );
     return res.json({ ok: true });
@@ -255,7 +255,11 @@ router.post(
     const requestId = String(req.params.id || "").trim();
     if (!requestId) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
     await pool.query(
-      `UPDATE license_requests SET status='REJECTED', updated_at=NOW() WHERE id=$1`,
+      `UPDATE license_requests
+       SET status='REJECTED',
+           request_status=COALESCE(request_status,'rejected'),
+           updated_at=NOW()
+       WHERE id=$1`,
       [requestId]
     );
     return res.json({ ok: true });
@@ -276,6 +280,17 @@ router.post(
         bl.license_id,
         bl.plan,
         bl.device_limit,
+        bl.plan_name,
+        bl.base_device_limit,
+        bl.extra_device_count,
+        bl.total_device_limit,
+        bl.license_version,
+        bl.previous_license_id,
+        bl.change_reason,
+        bl.license_status,
+        bl.request_id,
+        bl.hardware_bundle,
+        bl.quoted_price,
         0 AS used_devices,
         bl.issued_at,
         bl.expires_at,
@@ -362,8 +377,9 @@ router.post(
     }
     const lic = await licenseService.issueBackendLicense({
       backendId: row.rows[0].backend_id,
-      plan: row.rows[0].plan,
-      deviceLimitOverride: row.rows[0].device_limit
+      issueType: "renewal",
+      planName: row.rows[0].plan,
+      baseDeviceLimit: row.rows[0].device_limit
     });
     await logAudit({
       admin: req.admin,
@@ -427,17 +443,31 @@ router.post(
   async (req, res) => {
     try {
       const backendId = String(req.body?.backend_id || "").trim();
-      const plan = String(req.body?.plan || "").trim();
-      const deviceLimit = req.body?.device_limit != null ? Number(req.body.device_limit) : null;
-      const expiresAt = String(req.body?.expires_at || "").trim();
+      const issueType = String(req.body?.issue_type || "new_license").trim();
+      const planName = String(req.body?.plan_name || req.body?.plan || "").trim();
+      const baseDeviceLimit = req.body?.base_device_limit != null ? Number(req.body.base_device_limit) : null;
+      const extraDeviceCount = req.body?.extra_device_count != null ? Number(req.body.extra_device_count) : null;
+      const issuedAt = String(req.body?.issued_at || "").trim();
+      const expiresAt = String(req.body?.expiry_date || req.body?.expires_at || "").trim();
+      const licenseStatus = String(req.body?.license_status || "active").trim();
+      const hardwareBundle = String(req.body?.hardware_bundle || "").trim();
+      const quotedPrice = req.body?.quoted_price != null ? Number(req.body.quoted_price) : null;
+      const requestId = String(req.body?.request_id || "").trim();
       if (!backendId) return res.status(400).json({ ok: false, error: "BACKEND_REQUIRED" });
-      if (!plan) return res.status(400).json({ ok: false, error: "PLAN_REQUIRED" });
+      if (!planName) return res.status(400).json({ ok: false, error: "PLAN_REQUIRED" });
 
       const lic = await licenseService.issueBackendLicense({
         backendId,
-        plan,
-        deviceLimitOverride: Number.isFinite(deviceLimit) ? deviceLimit : null,
-        expiresAtOverride: expiresAt || null
+        issueType,
+        planName,
+        baseDeviceLimit: Number.isFinite(baseDeviceLimit) ? baseDeviceLimit : null,
+        extraDeviceCount: Number.isFinite(extraDeviceCount) ? extraDeviceCount : null,
+        issuedAtOverride: issuedAt || null,
+        expiresAtOverride: expiresAt || null,
+        licenseStatus,
+        hardwareBundle,
+        quotedPrice: Number.isFinite(quotedPrice) ? quotedPrice : null,
+        requestId: requestId || null
       });
       await logAudit({
         admin: req.admin,
@@ -479,8 +509,9 @@ router.post(
 
       const lic = await licenseService.issueBackendLicense({
         backendId: row.rows[0].backend_id,
-        plan,
-        deviceLimitOverride: Number.isFinite(deviceLimit) ? deviceLimit : null,
+        issueType: "correction",
+        planName: plan,
+        baseDeviceLimit: Number.isFinite(deviceLimit) ? deviceLimit : null,
         expiresAtOverride: expiresAt || null
       });
       await logAudit({

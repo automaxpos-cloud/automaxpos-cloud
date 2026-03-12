@@ -56,8 +56,8 @@ async function current(req, res) {
       },
       meta: {
         license_id: lic.license_id,
-        plan: licenseService.normalizePlan(lic.plan, lic.device_limit),
-        device_limit: lic.device_limit,
+        plan: lic.plan_name || licenseService.normalizePlan(lic.plan, lic.device_limit),
+        device_limit: lic.total_device_limit ?? lic.device_limit,
         issued_at: toEpochSeconds(lic.issued_at),
         expires_at: toEpochSeconds(lic.expires_at),
         grace_ends_at: toEpochSeconds(lic.grace_ends_at),
@@ -96,8 +96,9 @@ async function issue(req, res) {
     }
     const license = await licenseService.issueBackendLicense({
       backendId: String(backend_id),
-      plan,
-      deviceLimitOverride: device_limit
+      issueType: "new_license",
+      planName: plan,
+      baseDeviceLimit: device_limit
     });
     return res.json({ ok: true, license });
   } catch (err) {
