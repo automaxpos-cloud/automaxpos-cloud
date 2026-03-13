@@ -1184,19 +1184,19 @@ router.get(
       const offline = Number(byId("settings_offline_threshold").value);
       if (!cloudBaseUrl) {
         byId("settings_status").textContent = "Cloud Base URL is required.";
-        return setToast("Cloud Base URL is required.", "var(--bad)");
+        return;
       }
       if (!/^https?:\\/\\//i.test(cloudBaseUrl)) {
         byId("settings_status").textContent = "Cloud Base URL must be a valid URL.";
-        return setToast("Invalid Cloud Base URL.", "var(--bad)");
+        return;
       }
       if (!Number.isFinite(online) || online <= 0) {
         byId("settings_status").textContent = "Online threshold must be > 0.";
-        return setToast("Online threshold must be > 0.", "var(--bad)");
+        return;
       }
       if (!Number.isFinite(offline) || offline <= 0 || offline < online) {
         byId("settings_status").textContent = "Offline threshold must be >= online.";
-        return setToast("Offline threshold must be >= online.", "var(--bad)");
+        return;
       }
       const res = await fetch("/api/admin/platform-settings", {
         method: "PUT",
