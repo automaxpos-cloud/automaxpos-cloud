@@ -247,6 +247,109 @@ router.post(
 );
 
 router.post(
+  "/license-requests/:id/approve",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
+  try {
+    const requestId = String(req.params.id || "").trim();
+    if (!requestId) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+
+    const reqRow = await pool.query(
+      `SELECT
+         id,
+         request_id,
+         backend_id,
+         business_id,
+         branch_id,
+         machine_id,
+         request_type,
+         requested_plan,
+         requested_total_device_limit,
+         extra_device_count,
+         plan,
+         device_limit,
+         current_plan,
+         current_total_device_limit,
+         hardware_bundle,
+         amount_expected
+       FROM license_requests
+       WHERE id=$1`,
+      [requestId]
+    );
+    if (!reqRow.rows.length) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    }
+
+    const row = reqRow.rows[0];
+    let backendId = row.backend_id;
+    if (!backendId && row.machine_id) {
+      const backendRes = await pool.query(
+        `SELECT id FROM backend_devices WHERE machine_id=$1 ORDER BY last_seen_at DESC NULLS LAST LIMIT 1`,
+        [row.machine_id]
+      );
+      backendId = backendRes.rows[0]?.id || null;
+    }
+    if (!backendId) {
+      return res.status(400).json({ ok: false, error: "BACKEND_NOT_FOUND", message: "Request has no backend_id/machine_id match" });
+    }
+
+    const typeRaw = String(row.request_type || "").toLowerCase();
+    const issueType =
+      typeRaw === "device_addon" || typeRaw === "extra_device_addon" ? "device_addon" :
+      typeRaw === "renewal" ? "renewal" :
+      typeRaw === "upgrade" || typeRaw === "plan_upgrade" ? "upgrade" :
+      typeRaw === "correction" ? "correction" :
+      "new_license";
+
+    const planName = row.requested_plan || row.plan || row.current_plan || "Business";
+    const baseMap = { Starter: 1, Standard: 3, Business: 5, Enterprise: 10 };
+    const baseDeviceLimit = baseMap[String(planName || "").trim()] || 1;
+    const requestedTotal =
+      row.requested_total_device_limit ??
+      row.device_limit ??
+      row.current_total_device_limit ??
+      null;
+    const extraDeviceCount =
+      row.extra_device_count != null
+        ? Number(row.extra_device_count)
+        : (requestedTotal != null ? Math.max(0, Number(requestedTotal) - baseDeviceLimit) : 0);
+
+    const issued = await licenseService.issueBackendLicense({
+      backendId,
+      issueType,
+      planName,
+      baseDeviceLimit,
+      extraDeviceCount,
+      requestId: row.request_id,
+      hardwareBundle: row.hardware_bundle,
+      quotedPrice: row.amount_expected
+    });
+
+    await pool.query(
+      `UPDATE license_requests
+       SET status='APPROVED',
+           request_status=COALESCE(request_status,'approved'),
+           reviewed_at=NOW(),
+           updated_at=NOW()
+       WHERE id=$1`,
+      [requestId]
+    );
+
+    return res.json({
+      ok: true,
+      license_id: issued?.license_id || null,
+      device_limit: issued?.total_device_limit || issued?.device_limit || null
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("APPROVE REQUEST ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to approve request" });
+  }
+  }
+);
+
+router.post(
   "/license-requests/:id/reject",
   adminJwt,
   requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),

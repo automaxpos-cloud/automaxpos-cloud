@@ -42,6 +42,10 @@ router.get(
       --warn: #facc15;
       --border: #1f2a40;
       --neutral: #94a3b8;
+      --sidebar-bg: #0f1728;
+      --sidebar-item-bg: #121c30;
+      --sidebar-text: #e6e9ef;
+      --sidebar-active: #2e78ff;
     }
     :root[data-theme="light"] {
       --bg: #f3f6fb;
@@ -55,6 +59,10 @@ router.get(
       --warn: #d97706;
       --border: #d9e0ee;
       --neutral: #64748b;
+      --sidebar-bg: #f4f6fb;
+      --sidebar-item-bg: #ffffff;
+      --sidebar-text: #1a1a1a;
+      --sidebar-active: #2e6cff;
     }
     * { box-sizing: border-box; }
     body {
@@ -74,7 +82,7 @@ router.get(
     aside {
       border-right: 1px solid var(--border);
       padding: 18px 16px;
-      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      background: var(--sidebar-bg);
     }
     .brand { font-weight: 600; margin-bottom: 18px; }
     nav a {
@@ -83,11 +91,12 @@ router.get(
       margin-bottom: 8px;
       border-radius: 8px;
       text-decoration: none;
-      color: var(--text);
+      color: var(--sidebar-text);
       border: 1px solid var(--border);
-      background: #121c30;
+      background: var(--sidebar-item-bg);
     }
-    nav a.active { background: var(--accent); }
+    nav a:hover { border-color: var(--sidebar-active); }
+    nav a.active { background: var(--sidebar-active); color: #fff; }
     main { padding: 20px 28px; }
     .topbar {
       display: flex;
@@ -300,7 +309,7 @@ router.get(
       <section id="section-requests" class="hidden">
         <h1>License Requests</h1>
         <div class="toolbar">
-          <input id="request_search" placeholder="Search by request id, name, email, machine id" style="min-width:260px;" />
+          <input id="request_search" placeholder="Search by request id, business, contact, email, machine id" style="min-width:260px;" />
           <button class="btn" id="requests_refresh">Refresh</button>
           <div class="status-line" id="requests_status"></div>
         </div>
@@ -322,10 +331,6 @@ router.get(
               <th>Backend ID</th>
               <th>Requested At</th>
               <th>Status</th>
-              <th>Payment</th>
-              <th>Method</th>
-              <th>Txn ID</th>
-              <th>Amount</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -651,6 +656,8 @@ router.get(
       <div class="detail-grid" id="detail_grid"></div>
       <div class="row" style="margin-top:12px;">
         <div class="spacer"></div>
+        <button class="btn" id="detail_reject">Reject</button>
+        <button class="btn primary" id="detail_approve">Approve</button>
         <button class="btn" id="detail_close">Close</button>
       </div>
     </div>
@@ -720,6 +727,8 @@ router.get(
     function statusBadge(status) {
       const s = String(status || "").toUpperCase();
       if (s === "PENDING") return badge(s, "badge-pending");
+      if (s === "APPROVED") return badge(s, "badge-active");
+      if (s === "REJECTED") return badge(s, "badge-revoked");
       if (s === "ISSUED" || s === "ACTIVE") return badge(s, "badge-active");
       if (s === "REVOKED") return badge(s, "badge-revoked");
       if (s === "EXPIRED") return badge(s, "badge-expired");
@@ -769,6 +778,9 @@ router.get(
         item.innerHTML = "<span>" + label + "</span>" + (value ?? "-");
         grid.appendChild(item);
       });
+      const showActions = title === "License Request";
+      byId("detail_approve").style.display = showActions ? "inline-flex" : "none";
+      byId("detail_reject").style.display = showActions ? "inline-flex" : "none";
       byId("detail_modal").style.display = "flex";
     }
 
@@ -891,16 +903,10 @@ router.get(
           "<td>" + (r.machine_id ? r.machine_id.slice(0, 10) + "..." : "-") + "</td>" +
           "<td>" + (r.backend_id || "-") + "</td>" +
           "<td>" + (r.requested_at ? new Date(r.requested_at).toLocaleString() : "-") + "</td>" +
-          "<td>" + statusBadge(r.status) + "</td>" +
-          "<td>" + paymentBadge(r.payment_status) + "</td>" +
-          "<td>" + (r.payment_method || "-") + "</td>" +
-          "<td>" + (r.payment_txn_id || "-") + "</td>" +
-          "<td>" + (r.payment_amount ?? "-") + "</td>" +
+          "<td>" + statusBadge(r.status || r.request_status) + "</td>" +
           "<td>" +
           "<button class='btn' data-action='view' data-id='" + r.id + "'>View</button> " +
-          "<button class='btn' data-action='load' data-id='" + r.id + "'>Load</button> " +
-          "<button class='btn' data-action='pay' data-id='" + r.id + "'>Confirm Payment</button> " +
-          "<button class='btn' data-action='issue' data-id='" + r.id + "'" + (paid ? "" : " disabled") + ">Mark Issued</button> " +
+          "<button class='btn' data-action='approve' data-id='" + r.id + "'>Approve</button> " +
           "<button class='btn' data-action='reject' data-id='" + r.id + "'>Reject</button>" +
           "</td>";
         body.appendChild(tr);
@@ -1252,6 +1258,20 @@ router.get(
           }
           await loadRequests();
         }
+        if (btn.dataset.action === "approve") {
+          const resp = await fetch("/api/admin/license-requests/" + id + "/approve", {
+            method: "POST",
+            headers: authHeaders()
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            setToast(data?.message || data?.error || "Approval failed.", "var(--bad)");
+          } else {
+            setToast("Request approved. License " + (data.license_id || "") + " issued.", "var(--good)");
+          }
+          await loadRequests();
+          await loadLicenses();
+        }
         if (btn.dataset.action === "reject") {
           await fetch("/api/admin/license-requests/" + id + "/reject", {
             method: "POST",
@@ -1263,6 +1283,7 @@ router.get(
         if (btn.dataset.action === "view") {
           const r = requestMap.get(String(id));
           if (!r) return;
+          activeRequestId = id;
           renderDetails("License Request", [
             { label: "Request ID", value: r.request_id || r.id },
             { label: "Business Name", value: r.business_name || r.customer_name },
@@ -1557,6 +1578,32 @@ router.get(
       });
       byId("detail_close").addEventListener("click", () => {
         byId("detail_modal").style.display = "none";
+      });
+      byId("detail_approve").addEventListener("click", async () => {
+        if (!activeRequestId) return;
+        const resp = await fetch("/api/admin/license-requests/" + activeRequestId + "/approve", {
+          method: "POST",
+          headers: authHeaders()
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          setToast(data?.message || data?.error || "Approval failed.", "var(--bad)");
+          return;
+        }
+        setToast("Request approved. License " + (data.license_id || "") + " issued.", "var(--good)");
+        byId("detail_modal").style.display = "none";
+        await loadRequests();
+        await loadLicenses();
+      });
+      byId("detail_reject").addEventListener("click", async () => {
+        if (!activeRequestId) return;
+        await fetch("/api/admin/license-requests/" + activeRequestId + "/reject", {
+          method: "POST",
+          headers: authHeaders()
+        });
+        setToast("Request rejected.", "var(--warn)");
+        byId("detail_modal").style.display = "none";
+        await loadRequests();
       });
 
       const token = localStorage.getItem(tokenKey);
