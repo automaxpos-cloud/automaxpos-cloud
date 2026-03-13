@@ -11,6 +11,10 @@ function normalizeAmount(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+router.get("/airtel-sms/health", (req, res) => {
+  return res.json({ ok: true, route: "/api/payments/airtel-sms", version: "v1" });
+});
+
 router.post("/airtel-sms", async (req, res) => {
   try {
     const expectedKey = String(process.env.PAYMENT_INGEST_API_KEY || "").trim();
