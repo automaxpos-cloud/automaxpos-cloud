@@ -534,19 +534,77 @@ router.get(
 
       <section id="section-sync" class="hidden">
         <h1>Sync Monitoring</h1>
+        <div class="toolbar">
+          <button class="btn" id="sync_refresh">Refresh</button>
+          <div class="status-line" id="sync_status"></div>
+        </div>
+        <div class="grid cards" style="margin-bottom:14px;">
+          <div class="card"><h3>Total Backends</h3><div class="value" id="sync_total">--</div></div>
+          <div class="card"><h3>Online</h3><div class="value" id="sync_online">--</div></div>
+          <div class="card"><h3>Delayed</h3><div class="value" id="sync_delayed">--</div></div>
+          <div class="card"><h3>Offline</h3><div class="value" id="sync_offline">--</div></div>
+          <div class="card"><h3>Sales Synced Today</h3><div class="value" id="sync_sales">--</div></div>
+          <div class="card"><h3>Inventory Snapshots Today</h3><div class="value" id="sync_inventory">--</div></div>
+          <div class="card"><h3>Heartbeat Events Today</h3><div class="value" id="sync_heartbeats">--</div></div>
+        </div>
+
+        <div class="card" style="margin-bottom:14px;">
+          <h3 style="margin-top:0;">Recent Backend Activity</h3>
+          <div id="sync_recent_empty" class="empty hidden">No recent backend activity.</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Backend</th>
+                <th>Business</th>
+                <th>Branch</th>
+                <th>Machine ID</th>
+                <th>Last Heartbeat</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="sync_recent_body"></tbody>
+          </table>
+        </div>
+
         <div class="card">
-          <div class="muted">This panel provides hosted sync monitoring for AutoMax POS backends.</div>
-          <div style="margin-top:8px;" class="muted">More detailed metrics and logs will appear here.</div>
+          <h3 style="margin-top:0;">Delayed / Offline Backends</h3>
+          <div id="sync_delayed_empty" class="empty hidden">No delayed backends.</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Backend</th>
+                <th>Business</th>
+                <th>Branch</th>
+                <th>Last Heartbeat</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="sync_delayed_body"></tbody>
+          </table>
         </div>
       </section>
 
       <section id="section-settings" class="hidden">
         <h1>Platform Settings</h1>
-        <div class="card">
-          <div class="muted">Internal JP Max settings, roles, and access controls.</div>
-          <div class="detail-item" style="margin-top:10px;">
-            <span>Cloud Base URL</span>
-            ${CLOUD_BASE_URL || "https://automaxpos-cloud.onrender.com"}
+        <div class="card" style="margin-bottom:14px;">
+          <div class="muted">Internal JP Max settings and hosted sync thresholds.</div>
+          <div class="row" style="margin-top:12px;">
+            <div>
+              <label class="muted">Cloud Base URL</label>
+              <input id="settings_cloud_base_url" type="text" style="width:100%;" placeholder="https://automaxpos-cloud.onrender.com" />
+            </div>
+            <div>
+              <label class="muted">Online Threshold (seconds)</label>
+              <input id="settings_online_threshold" type="number" min="30" step="30" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Offline Threshold (seconds)</label>
+              <input id="settings_offline_threshold" type="number" min="60" step="60" style="width:100%;" />
+            </div>
+          </div>
+          <div class="toolbar" style="margin-top:10px;">
+            <button class="btn primary" id="settings_save">Save Settings</button>
+            <div class="status-line" id="settings_status"></div>
           </div>
         </div>
       </section>
@@ -1030,6 +1088,105 @@ router.get(
       return 1;
     }
 
+    async function loadSyncMonitor(silent) {
+      byId("sync_status").textContent = "Loading...";
+      const res = await fetch("/api/admin/sync-monitor", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.message || data?.error || "Failed to load sync monitoring.";
+        byId("sync_status").textContent = msg;
+        if (!silent) setToast(msg, "var(--bad)");
+        return;
+      }
+      const summary = data.summary || {};
+      byId("sync_status").textContent = "Updated " + new Date().toLocaleTimeString();
+      byId("sync_total").textContent = summary.total_backends ?? 0;
+      byId("sync_online").textContent = summary.online_backends ?? 0;
+      byId("sync_delayed").textContent = summary.delayed_backends ?? 0;
+      byId("sync_offline").textContent = summary.offline_backends ?? 0;
+      byId("sync_sales").textContent = summary.sales_synced_today ?? 0;
+      byId("sync_inventory").textContent = summary.inventory_snapshots_today ?? 0;
+      byId("sync_heartbeats").textContent = summary.heartbeat_events_today ?? 0;
+
+      const recentBody = byId("sync_recent_body");
+      const delayedBody = byId("sync_delayed_body");
+      recentBody.innerHTML = "";
+      delayedBody.innerHTML = "";
+
+      const recent = data.recent_activity || [];
+      const delayed = data.delayed_backends || [];
+      byId("sync_recent_empty").classList.toggle("hidden", recent.length > 0);
+      byId("sync_delayed_empty").classList.toggle("hidden", delayed.length > 0);
+
+      recent.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.backend_id || "-") + "</td>" +
+          "<td>" + (r.business_name || "-") + "</td>" +
+          "<td>" + (r.branch_name || "-") + "</td>" +
+          "<td>" + (r.machine_id ? r.machine_id.slice(0, 10) + "..." : "-") + "</td>" +
+          "<td>" + (r.last_heartbeat ? new Date(r.last_heartbeat).toLocaleString() : "-") + "</td>" +
+          "<td>" + onlineBadge(r.status) + "</td>";
+        recentBody.appendChild(tr);
+      });
+
+      delayed.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.backend_id || "-") + "</td>" +
+          "<td>" + (r.business_name || "-") + "</td>" +
+          "<td>" + (r.branch_name || "-") + "</td>" +
+          "<td>" + (r.last_heartbeat ? new Date(r.last_heartbeat).toLocaleString() : "-") + "</td>" +
+          "<td>" + onlineBadge(r.status) + "</td>";
+        delayedBody.appendChild(tr);
+      });
+    }
+
+    async function loadPlatformSettings(silent) {
+      byId("settings_status").textContent = "Loading...";
+      const res = await fetch("/api/admin/platform-settings", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.message || data?.error || "Failed to load settings.";
+        byId("settings_status").textContent = msg;
+        if (!silent) setToast(msg, "var(--bad)");
+        return;
+      }
+      const s = data.settings || {};
+      byId("settings_cloud_base_url").value = s.cloud_base_url || "";
+      byId("settings_online_threshold").value = s.heartbeat_online_threshold_seconds ?? 300;
+      byId("settings_offline_threshold").value = s.heartbeat_offline_threshold_seconds ?? 900;
+      byId("settings_status").textContent = "Loaded";
+    }
+
+    async function savePlatformSettings() {
+      const cloudBaseUrl = byId("settings_cloud_base_url").value.trim();
+      const online = Number(byId("settings_online_threshold").value);
+      const offline = Number(byId("settings_offline_threshold").value);
+      if (!cloudBaseUrl) return setToast("Cloud Base URL is required.", "var(--bad)");
+      if (!Number.isFinite(online) || online <= 0) {
+        return setToast("Online threshold must be > 0.", "var(--bad)");
+      }
+      if (!Number.isFinite(offline) || offline <= 0 || offline < online) {
+        return setToast("Offline threshold must be >= online.", "var(--bad)");
+      }
+      const res = await fetch("/api/admin/platform-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          cloud_base_url: cloudBaseUrl,
+          heartbeat_online_threshold_seconds: online,
+          heartbeat_offline_threshold_seconds: offline
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return setToast(data?.message || data?.error || "Failed to save settings.", "var(--bad)");
+      }
+      byId("settings_status").textContent = "Saved " + new Date().toLocaleTimeString();
+      setToast("Settings saved.", "var(--good)");
+    }
+
     function manualChangeReason(issueType) {
       const t = String(issueType || "").toLowerCase();
       if (t === "renewal") return "renewal";
@@ -1063,7 +1220,9 @@ router.get(
         loadBackends(true),
         loadBusinesses(true),
         loadBackendsCatalog(true),
-        loadManualLicenses(true)
+        loadManualLicenses(true),
+        loadSyncMonitor(true),
+        loadPlatformSettings(true)
       ]);
       updateManualDerived();
     }
@@ -1342,6 +1501,8 @@ router.get(
       byId("licenses_refresh").addEventListener("click", loadLicenses);
       byId("backends_refresh").addEventListener("click", loadBackends);
       byId("businesses_refresh").addEventListener("click", loadBusinesses);
+      byId("sync_refresh").addEventListener("click", loadSyncMonitor);
+      byId("settings_save").addEventListener("click", savePlatformSettings);
       byId("manual_refresh").addEventListener("click", async () => {
         await loadBusinesses();
         await loadBackendsCatalog();

@@ -585,6 +585,15 @@ router.get("/backends", adminJwt, async (_req, res) => {
       if (!exists.rows[0]?.t) {
         return res.status(500).json({ ok: false, error: "MISSING_TABLE", message: "backend_licenses table missing" });
       }
+      const flagCol = await pool.query(
+        `SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema='public'
+           AND table_name='backend_devices'
+           AND column_name='is_flagged'
+         LIMIT 1`
+      );
+      const hasFlag = flagCol.rowCount > 0;
       const hbExists = await pool.query(`SELECT to_regclass('public.backend_heartbeats') AS t`);
       const hasHeartbeats = !!hbExists.rows[0]?.t;
       const heartbeatJoin = hasHeartbeats
@@ -615,7 +624,7 @@ router.get("/backends", adminJwt, async (_req, res) => {
         bd.backend_version,
         COALESCE(hb.last_heartbeat, bd.last_seen_at) AS last_heartbeat,
         bd.is_active,
-        bd.is_flagged,
+        ${hasFlag ? "bd.is_flagged" : "FALSE"} AS is_flagged,
         CASE
           WHEN COALESCE(hb.last_heartbeat, bd.last_seen_at) >= NOW() - INTERVAL '10 minutes' THEN 'ONLINE'
           ELSE 'OFFLINE'
@@ -667,6 +676,209 @@ router.get("/backends", adminJwt, async (_req, res) => {
     // eslint-disable-next-line no-console
     console.error("ADMIN BACKENDS ERROR:", err?.message || err, err?.stack || "");
     return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load backends" });
+  }
+});
+
+router.get("/sync-monitor", adminJwt, async (_req, res) => {
+  try {
+    const tables = await pool.query(
+      `SELECT
+        to_regclass('public.backend_devices') AS backend_devices,
+        to_regclass('public.backend_heartbeats') AS backend_heartbeats,
+        to_regclass('public.synced_sales') AS synced_sales,
+        to_regclass('public.inventory_snapshots') AS inventory_snapshots`
+    );
+    const hasBackends = !!tables.rows[0]?.backend_devices;
+    const hasHeartbeats = !!tables.rows[0]?.backend_heartbeats;
+    const hasSales = !!tables.rows[0]?.synced_sales;
+    const hasInventory = !!tables.rows[0]?.inventory_snapshots;
+
+    const settingsRes = await pool.query(
+      `SELECT cloud_base_url, heartbeat_online_threshold_seconds, heartbeat_offline_threshold_seconds
+       FROM platform_settings
+       ORDER BY updated_at DESC NULLS LAST
+       LIMIT 1`
+    ).catch(() => ({ rows: [] }));
+    const settings = settingsRes.rows?.[0] || {};
+    const onlineSec = Number(settings.heartbeat_online_threshold_seconds || 300);
+    const offlineSec = Number(settings.heartbeat_offline_threshold_seconds || 900);
+
+    const hbJoin = hasHeartbeats
+      ? `
+      LEFT JOIN LATERAL (
+        SELECT bh.heartbeat_at AS last_heartbeat
+        FROM backend_heartbeats bh
+        WHERE bh.backend_id = bd.id
+        ORDER BY bh.heartbeat_at DESC
+        LIMIT 1
+      ) hb ON TRUE
+      `
+      : `
+      LEFT JOIN LATERAL (
+        SELECT NULL::timestamptz AS last_heartbeat
+      ) hb ON TRUE
+      `;
+
+    const backendRows = hasBackends
+      ? await pool.query(
+          `
+        SELECT
+          bd.id AS backend_id,
+          COALESCE(bd.backend_name, bd.id::text) AS backend_name,
+          bd.business_id,
+          bd.branch_id,
+          b.name AS business_name,
+          br.name AS branch_name,
+          bd.machine_id,
+          bd.backend_version,
+          COALESCE(hb.last_heartbeat, bd.last_seen_at) AS last_heartbeat,
+          CASE
+            WHEN COALESCE(hb.last_heartbeat, bd.last_seen_at) >= NOW() - ($1 || ' seconds')::interval THEN 'ONLINE'
+            WHEN COALESCE(hb.last_heartbeat, bd.last_seen_at) >= NOW() - ($2 || ' seconds')::interval THEN 'DELAYED'
+            ELSE 'OFFLINE'
+          END AS status
+        FROM backend_devices bd
+        LEFT JOIN businesses b ON b.id = bd.business_id
+        LEFT JOIN branches br ON br.id = bd.branch_id
+        ${hbJoin}
+        ORDER BY COALESCE(hb.last_heartbeat, bd.last_seen_at) DESC NULLS LAST
+        LIMIT 200
+        `,
+          [onlineSec, offlineSec]
+        )
+      : { rows: [] };
+
+    const totalBackends = backendRows.rows.length;
+    const onlineBackends = backendRows.rows.filter((r) => r.status === "ONLINE").length;
+    const delayedBackends = backendRows.rows.filter((r) => r.status === "DELAYED").length;
+    const offlineBackends = backendRows.rows.filter((r) => r.status === "OFFLINE").length;
+
+    const salesToday = hasSales
+      ? await pool.query(
+          `SELECT COUNT(*) AS c FROM synced_sales WHERE synced_at >= CURRENT_DATE`
+        )
+      : { rows: [{ c: 0 }] };
+    const snapshotsToday = hasInventory
+      ? await pool.query(
+          `SELECT COUNT(*) AS c FROM inventory_snapshots WHERE snapshot_time >= CURRENT_DATE`
+        )
+      : { rows: [{ c: 0 }] };
+    const heartbeatsToday = hasHeartbeats
+      ? await pool.query(
+          `SELECT COUNT(*) AS c FROM backend_heartbeats WHERE heartbeat_at >= CURRENT_DATE`
+        )
+      : { rows: [{ c: 0 }] };
+
+    const recentActivity = backendRows.rows.slice(0, 20);
+    const delayedList = backendRows.rows.filter((r) => r.status !== "ONLINE").slice(0, 20);
+
+    return res.json({
+      ok: true,
+      summary: {
+        total_backends: totalBackends,
+        online_backends: onlineBackends,
+        delayed_backends: delayedBackends,
+        offline_backends: offlineBackends,
+        sales_synced_today: Number(salesToday.rows[0]?.c || 0),
+        inventory_snapshots_today: Number(snapshotsToday.rows[0]?.c || 0),
+        heartbeat_events_today: Number(heartbeatsToday.rows[0]?.c || 0),
+        last_activity_at: recentActivity[0]?.last_heartbeat || null
+      },
+      recent_activity: recentActivity,
+      delayed_backends: delayedList
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN SYNC MONITOR ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load sync monitoring" });
+  }
+});
+
+router.get("/platform-settings", adminJwt, async (_req, res) => {
+  try {
+    const exists = await pool.query(`SELECT to_regclass('public.platform_settings') AS t`);
+    if (!exists.rows[0]?.t) {
+      return res.json({
+        ok: true,
+        settings: {
+          cloud_base_url: process.env.CLOUD_BASE_URL || "https://automaxpos-cloud.onrender.com",
+          heartbeat_online_threshold_seconds: 300,
+          heartbeat_offline_threshold_seconds: 900
+        }
+      });
+    }
+    const rows = await pool.query(
+      `SELECT cloud_base_url, support_email, heartbeat_online_threshold_seconds,
+              heartbeat_offline_threshold_seconds, enable_auto_backend_registration, enable_audit_logging
+       FROM platform_settings
+       ORDER BY updated_at DESC NULLS LAST
+       LIMIT 1`
+    );
+    const row = rows.rows[0] || {};
+    return res.json({
+      ok: true,
+      settings: {
+        cloud_base_url: row.cloud_base_url || process.env.CLOUD_BASE_URL || "https://automaxpos-cloud.onrender.com",
+        support_email: row.support_email || "",
+        heartbeat_online_threshold_seconds: row.heartbeat_online_threshold_seconds ?? 300,
+        heartbeat_offline_threshold_seconds: row.heartbeat_offline_threshold_seconds ?? 900,
+        enable_auto_backend_registration: row.enable_auto_backend_registration ?? true,
+        enable_audit_logging: row.enable_audit_logging ?? true
+      }
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN PLATFORM SETTINGS ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load settings" });
+  }
+});
+
+router.put("/platform-settings", adminJwt, async (req, res) => {
+  try {
+    const cloudBaseUrl = String(req.body?.cloud_base_url || "").trim();
+    const onlineSec = Number(req.body?.heartbeat_online_threshold_seconds);
+    const offlineSec = Number(req.body?.heartbeat_offline_threshold_seconds);
+    if (!cloudBaseUrl) {
+      return res.status(400).json({ ok: false, error: "CLOUD_BASE_URL_REQUIRED" });
+    }
+    if (!Number.isFinite(onlineSec) || onlineSec <= 0) {
+      return res.status(400).json({ ok: false, error: "INVALID_ONLINE_THRESHOLD" });
+    }
+    if (!Number.isFinite(offlineSec) || offlineSec <= 0 || offlineSec < onlineSec) {
+      return res.status(400).json({ ok: false, error: "INVALID_OFFLINE_THRESHOLD" });
+    }
+
+    const exists = await pool.query(`SELECT to_regclass('public.platform_settings') AS t`);
+    if (!exists.rows[0]?.t) {
+      return res.status(500).json({ ok: false, error: "MISSING_TABLE", message: "platform_settings table missing" });
+    }
+    const current = await pool.query(`SELECT id FROM platform_settings ORDER BY updated_at DESC NULLS LAST LIMIT 1`);
+    if (current.rows[0]?.id) {
+      await pool.query(
+        `UPDATE platform_settings
+         SET cloud_base_url=$1,
+             heartbeat_online_threshold_seconds=$2,
+             heartbeat_offline_threshold_seconds=$3,
+             updated_at=NOW()
+         WHERE id=$4`,
+        [cloudBaseUrl, onlineSec, offlineSec, current.rows[0].id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO platform_settings (
+           cloud_base_url,
+           heartbeat_online_threshold_seconds,
+           heartbeat_offline_threshold_seconds,
+           updated_at
+         ) VALUES ($1,$2,$3,NOW())`,
+        [cloudBaseUrl, onlineSec, offlineSec]
+      );
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN PLATFORM SETTINGS SAVE ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to save settings" });
   }
 });
 
