@@ -1168,10 +1168,13 @@ router.get(
       if (s.source === "defaults_table_missing") {
         byId("settings_status").textContent =
           "Using defaults. Saving is unavailable until platform settings storage is initialized.";
+        byId("settings_save").disabled = true;
       } else if (s.source === "defaults_created") {
         byId("settings_status").textContent = "Defaults created";
+        byId("settings_save").disabled = false;
       } else {
         byId("settings_status").textContent = "Settings loaded";
+        byId("settings_save").disabled = false;
       }
     }
 
@@ -1207,11 +1210,14 @@ router.get(
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const code = data?.code || data?.error || "";
-        const msg = data?.message || data?.error || "Failed to save settings.";
-        byId("settings_status").textContent = msg;
         if (code === "PLATFORM_SETTINGS_TABLE_MISSING") {
+          byId("settings_status").textContent =
+            "Using defaults. Saving is unavailable until platform settings storage is initialized.";
+          byId("settings_save").disabled = true;
           return;
         }
+        const msg = data?.message || data?.error || "Failed to save settings.";
+        byId("settings_status").textContent = msg;
         return setToast(msg, "var(--bad)");
       }
       byId("settings_status").textContent = "Settings saved " + new Date().toLocaleTimeString();
