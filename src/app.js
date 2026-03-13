@@ -19,6 +19,7 @@ const adminApi = require("./routes/adminApi");
 const setupWizard = require("./routes/setupWizard");
 const adminPage = require("./routes/adminPage");
 const publicApi = require("./routes/publicApi");
+const paymentIngest = require("./routes/paymentIngest");
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: false }));
 app.use(morgan("combined"));
 
 app.get("/", (req, res) => {
@@ -53,6 +55,7 @@ app.use("/api/cloud/inventory", cloudInventoryApi);
 app.use("/api/cloud/users", cloudUsersApi);
 app.use("/api/cloud/licenses", licenseAdminApi);
 app.use("/api/admin", adminApi);
+app.use("/api/payments", paymentIngest);
 app.use("/api/public", publicApi);
 if (NODE_ENV !== "production") {
   app.use("/api/cloud/setup", setupWizard);
