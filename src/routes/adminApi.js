@@ -901,22 +901,52 @@ router.get("/platform-settings", adminJwt, async (_req, res) => {
   try {
     const exists = await pool.query(`SELECT to_regclass('public.platform_settings') AS t`);
     if (!exists.rows[0]?.t) {
+      // eslint-disable-next-line no-console
+      console.warn("PLATFORM SETTINGS TABLE MISSING");
       return res.json({
         ok: true,
         settings: {
           cloud_base_url: process.env.CLOUD_BASE_URL || "https://automaxpos-cloud.onrender.com",
           heartbeat_online_threshold_seconds: 300,
-          heartbeat_offline_threshold_seconds: 900
+          heartbeat_offline_threshold_seconds: 900,
+          source: "defaults_table_missing"
         }
       });
     }
     const rows = await pool.query(
-      `SELECT cloud_base_url, support_email, heartbeat_online_threshold_seconds,
+      `SELECT id, cloud_base_url, support_email, heartbeat_online_threshold_seconds,
               heartbeat_offline_threshold_seconds, enable_auto_backend_registration, enable_audit_logging
        FROM platform_settings
        ORDER BY updated_at DESC NULLS LAST
        LIMIT 1`
     );
+    if (!rows.rows.length) {
+      const cloudBaseUrl = process.env.CLOUD_BASE_URL || "https://automaxpos-cloud.onrender.com";
+      const insert = await pool.query(
+        `INSERT INTO platform_settings (
+           cloud_base_url,
+           heartbeat_online_threshold_seconds,
+           heartbeat_offline_threshold_seconds,
+           updated_at
+         ) VALUES ($1,$2,$3,NOW())
+         RETURNING cloud_base_url, support_email, heartbeat_online_threshold_seconds,
+                   heartbeat_offline_threshold_seconds, enable_auto_backend_registration, enable_audit_logging`,
+        [cloudBaseUrl, 300, 900]
+      );
+      const row = insert.rows[0] || {};
+      return res.json({
+        ok: true,
+        settings: {
+          cloud_base_url: row.cloud_base_url || cloudBaseUrl,
+          support_email: row.support_email || "",
+          heartbeat_online_threshold_seconds: row.heartbeat_online_threshold_seconds ?? 300,
+          heartbeat_offline_threshold_seconds: row.heartbeat_offline_threshold_seconds ?? 900,
+          enable_auto_backend_registration: row.enable_auto_backend_registration ?? true,
+          enable_audit_logging: row.enable_audit_logging ?? true,
+          source: "defaults_created"
+        }
+      });
+    }
     const row = rows.rows[0] || {};
     return res.json({
       ok: true,
@@ -926,7 +956,8 @@ router.get("/platform-settings", adminJwt, async (_req, res) => {
         heartbeat_online_threshold_seconds: row.heartbeat_online_threshold_seconds ?? 300,
         heartbeat_offline_threshold_seconds: row.heartbeat_offline_threshold_seconds ?? 900,
         enable_auto_backend_registration: row.enable_auto_backend_registration ?? true,
-        enable_audit_logging: row.enable_audit_logging ?? true
+        enable_audit_logging: row.enable_audit_logging ?? true,
+        source: "stored"
       }
     });
   } catch (err) {
@@ -944,6 +975,12 @@ router.put("/platform-settings", adminJwt, async (req, res) => {
     if (!cloudBaseUrl) {
       return res.status(400).json({ ok: false, error: "CLOUD_BASE_URL_REQUIRED" });
     }
+    try {
+      // eslint-disable-next-line no-new
+      new URL(cloudBaseUrl);
+    } catch {
+      return res.status(400).json({ ok: false, error: "INVALID_CLOUD_BASE_URL" });
+    }
     if (!Number.isFinite(onlineSec) || onlineSec <= 0) {
       return res.status(400).json({ ok: false, error: "INVALID_ONLINE_THRESHOLD" });
     }
@@ -953,7 +990,11 @@ router.put("/platform-settings", adminJwt, async (req, res) => {
 
     const exists = await pool.query(`SELECT to_regclass('public.platform_settings') AS t`);
     if (!exists.rows[0]?.t) {
-      return res.status(500).json({ ok: false, error: "MISSING_TABLE", message: "platform_settings table missing" });
+      return res.status(500).json({
+        ok: false,
+        code: "PLATFORM_SETTINGS_TABLE_MISSING",
+        message: "Platform settings storage is not initialized."
+      });
     }
     const current = await pool.query(`SELECT id FROM platform_settings ORDER BY updated_at DESC NULLS LAST LIMIT 1`);
     if (current.rows[0]?.id) {

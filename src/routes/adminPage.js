@@ -1155,25 +1155,40 @@ router.get(
       if (!res.ok) {
         const msg = data?.message || data?.error || "Failed to load settings.";
         byId("settings_status").textContent = msg;
-        if (!silent) setToast(msg, "var(--bad)");
+        if (!silent) setToast("Failed to load settings.", "var(--bad)");
         return;
       }
       const s = data.settings || {};
       byId("settings_cloud_base_url").value = s.cloud_base_url || "";
       byId("settings_online_threshold").value = s.heartbeat_online_threshold_seconds ?? 300;
       byId("settings_offline_threshold").value = s.heartbeat_offline_threshold_seconds ?? 900;
-      byId("settings_status").textContent = "Loaded";
+      if (s.source === "defaults_table_missing") {
+        byId("settings_status").textContent = "Using defaults (storage not initialized)";
+      } else if (s.source === "defaults_created") {
+        byId("settings_status").textContent = "Defaults created";
+      } else {
+        byId("settings_status").textContent = "Settings loaded";
+      }
     }
 
     async function savePlatformSettings() {
       const cloudBaseUrl = byId("settings_cloud_base_url").value.trim();
       const online = Number(byId("settings_online_threshold").value);
       const offline = Number(byId("settings_offline_threshold").value);
-      if (!cloudBaseUrl) return setToast("Cloud Base URL is required.", "var(--bad)");
+      if (!cloudBaseUrl) {
+        byId("settings_status").textContent = "Cloud Base URL is required.";
+        return setToast("Cloud Base URL is required.", "var(--bad)");
+      }
+      if (!/^https?:\\/\\//i.test(cloudBaseUrl)) {
+        byId("settings_status").textContent = "Cloud Base URL must be a valid URL.";
+        return setToast("Invalid Cloud Base URL.", "var(--bad)");
+      }
       if (!Number.isFinite(online) || online <= 0) {
+        byId("settings_status").textContent = "Online threshold must be > 0.";
         return setToast("Online threshold must be > 0.", "var(--bad)");
       }
       if (!Number.isFinite(offline) || offline <= 0 || offline < online) {
+        byId("settings_status").textContent = "Offline threshold must be >= online.";
         return setToast("Offline threshold must be >= online.", "var(--bad)");
       }
       const res = await fetch("/api/admin/platform-settings", {
@@ -1187,9 +1202,11 @@ router.get(
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return setToast(data?.message || data?.error || "Failed to save settings.", "var(--bad)");
+        const msg = data?.message || data?.error || "Failed to save settings.";
+        byId("settings_status").textContent = msg;
+        return setToast(msg, "var(--bad)");
       }
-      byId("settings_status").textContent = "Saved " + new Date().toLocaleTimeString();
+      byId("settings_status").textContent = "Settings saved " + new Date().toLocaleTimeString();
       setToast("Settings saved.", "var(--good)");
     }
 
