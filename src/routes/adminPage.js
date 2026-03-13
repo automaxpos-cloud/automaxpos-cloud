@@ -7,6 +7,7 @@ router.get(
   [
     "/",
     "/automax-pos",
+    "/automax-pos/payments",
     "/automax-pos/requests",
     "/automax-pos/issued",
     "/automax-pos/licenses",
@@ -235,6 +236,7 @@ router.get(
       <nav>
         <a href="/jpmax-admin" id="nav-portal">JP Max Portal</a>
         <a href="/jpmax-admin/automax-pos" id="nav-overview">AutoMax POS Overview</a>
+        <a href="/jpmax-admin/automax-pos/payments" id="nav-payments">Payments</a>
         <a href="/jpmax-admin/automax-pos/requests" id="nav-requests">License Requests</a>
         <a href="/jpmax-admin/automax-pos/issued" id="nav-issued">Issued Licenses</a>
         <a href="/jpmax-admin/automax-pos/licenses" id="nav-manual">Manual License Manager</a>
@@ -306,6 +308,44 @@ router.get(
         </div>
       </section>
 
+      <section id="section-payments" class="hidden">
+        <h1>Payments</h1>
+        <div class="toolbar">
+          <input id="payments_search" placeholder="Search by txn id, phone" style="min-width:240px;" />
+          <select id="payments_status_filter" style="min-width:180px;">
+            <option value="">All statuses</option>
+            <option value="matched">Matched</option>
+            <option value="unmatched">Unmatched</option>
+            <option value="duplicate">Duplicate</option>
+            <option value="invalid">Invalid</option>
+          </select>
+          <button class="btn" id="payments_refresh">Refresh</button>
+          <div class="status-line" id="payments_status"></div>
+        </div>
+        <div class="grid cards" style="margin-bottom:12px;">
+          <div class="card"><h3>Imported Today</h3><div class="value" id="pay_sum_today">--</div></div>
+          <div class="card"><h3>Matched</h3><div class="value" id="pay_sum_matched">--</div></div>
+          <div class="card"><h3>Unmatched</h3><div class="value" id="pay_sum_unmatched">--</div></div>
+          <div class="card"><h3>Duplicates</h3><div class="value" id="pay_sum_duplicate">--</div></div>
+        </div>
+        <div id="payments_empty" class="empty hidden">No imported payments yet.</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Imported At</th>
+              <th>TXN ID</th>
+              <th>Phone</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Matched Request</th>
+              <th>Source</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="payments_body"></tbody>
+        </table>
+      </section>
+
       <section id="section-requests" class="hidden">
         <h1>License Requests</h1>
         <div class="toolbar">
@@ -331,6 +371,9 @@ router.get(
               <th>Backend ID</th>
               <th>Requested At</th>
               <th>Status</th>
+              <th>Payment Status</th>
+              <th>Payment Ref</th>
+              <th>Paid Amount</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -692,6 +735,7 @@ router.get(
       const map = {
         "/jpmax-admin": "nav-portal",
         "/jpmax-admin/automax-pos": "nav-overview",
+        "/jpmax-admin/automax-pos/payments": "nav-payments",
         "/jpmax-admin/automax-pos/requests": "nav-requests",
         "/jpmax-admin/automax-pos/issued": "nav-issued",
         "/jpmax-admin/automax-pos/licenses": "nav-manual",
@@ -707,9 +751,10 @@ router.get(
 
     function showSection() {
       const path = window.location.pathname;
-      const sections = ["portal", "overview", "requests", "issued", "manual", "backends", "businesses", "sync", "settings"];
+      const sections = ["portal", "overview", "payments", "requests", "issued", "manual", "backends", "businesses", "sync", "settings"];
       sections.forEach((s) => byId("section-" + s)?.classList.add("hidden"));
       if (path.endsWith("/automax-pos")) return byId("section-overview")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/payments")) return byId("section-payments")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/requests")) return byId("section-requests")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/issued")) return byId("section-issued")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/licenses")) return byId("section-manual")?.classList.remove("hidden");
@@ -740,6 +785,15 @@ router.get(
       if (s === "PAID") return badge(s, "badge-paid");
       if (s === "REFUNDED") return badge(s, "badge-refunded");
       return badge(s || "PENDING", "badge-pending");
+    }
+
+    function paymentStatusBadge(status) {
+      const s = String(status || "").toUpperCase();
+      if (s === "PAID") return badge("PAID", "badge-paid");
+      if (s === "PAYMENT_UNDER_REVIEW") return badge("UNDER REVIEW", "badge-pending");
+      if (s === "APPROVED") return badge("APPROVED", "badge-active");
+      if (s === "REJECTED") return badge("REJECTED", "badge-revoked");
+      return badge("PENDING PAYMENT", "badge-pending");
     }
 
     function onlineBadge(status) {
@@ -904,9 +958,12 @@ router.get(
           "<td>" + (r.backend_id || "-") + "</td>" +
           "<td>" + (r.requested_at ? new Date(r.requested_at).toLocaleString() : "-") + "</td>" +
           "<td>" + statusBadge(r.status || r.request_status) + "</td>" +
+          "<td>" + paymentStatusBadge(r.payment_status) + "</td>" +
+          "<td>" + (r.payment_reference || "-") + "</td>" +
+          "<td>" + (r.paid_amount != null ? "K" + r.paid_amount : "-") + "</td>" +
           "<td>" +
           "<button class='btn' data-action='view' data-id='" + r.id + "'>View</button> " +
-          "<button class='btn' data-action='approve' data-id='" + r.id + "'>Approve</button> " +
+          "<button class='btn' data-action='approve' data-id='" + r.id + "'" + (paid ? "" : " disabled") + ">Approve</button> " +
           "<button class='btn' data-action='reject' data-id='" + r.id + "'>Reject</button>" +
           "</td>";
         body.appendChild(tr);
@@ -1085,6 +1142,53 @@ router.get(
       });
     }
 
+    async function loadPayments(silent) {
+      byId("payments_status").textContent = "Loading...";
+      const status = byId("payments_status_filter")?.value || "";
+      const q = byId("payments_search")?.value.trim() || "";
+      const url =
+        "/api/admin/payments" +
+        (status || q ? "?" : "") +
+        (status ? "status=" + encodeURIComponent(status) : "") +
+        (status && q ? "&" : "") +
+        (q ? "q=" + encodeURIComponent(q) : "");
+      const res = await fetch(url, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.message || data?.error || "Failed to load payments.";
+        byId("payments_status").textContent = msg;
+        if (!silent) setToast(msg, "var(--bad)");
+        return;
+      }
+      const summary = data.summary || {};
+      byId("pay_sum_today").textContent = summary.imported_today ?? 0;
+      byId("pay_sum_matched").textContent = summary.matched ?? 0;
+      byId("pay_sum_unmatched").textContent = summary.unmatched ?? 0;
+      byId("pay_sum_duplicate").textContent = summary.duplicate ?? 0;
+
+      const body = byId("payments_body");
+      body.innerHTML = "";
+      const rows = data.rows || [];
+      byId("payments_status").textContent = rows.length + " rows";
+      byId("payments_empty").classList.toggle("hidden", rows.length > 0);
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.imported_at ? new Date(r.imported_at).toLocaleString() : "-") + "</td>" +
+          "<td>" + (r.txn_id || "-") + "</td>" +
+          "<td>" + (r.payer_phone || "-") + "</td>" +
+          "<td>" + (r.amount != null ? "K" + r.amount : "-") + "</td>" +
+          "<td>" + statusBadge(r.match_status || "-") + "</td>" +
+          "<td>" + (r.matched_request_id || "-") + "</td>" +
+          "<td>" + (r.source_type || "-") + "</td>" +
+          "<td>" +
+          "<button class='btn' data-action='view-payment' data-id='" + r.id + "'>View</button> " +
+          "<button class='btn' data-action='rematch' data-id='" + r.id + "'>Rematch</button>" +
+          "</td>";
+        body.appendChild(tr);
+      });
+    }
+
     function manualBaseLimit(plan) {
       const p = String(plan || "").trim();
       if (p === "Starter") return 1;
@@ -1252,6 +1356,7 @@ router.get(
       }
       await Promise.allSettled([
         loadSummary(true),
+        loadPayments(true),
         loadRequests(true),
         loadLicenses(true),
         loadBackends(true),
@@ -1315,6 +1420,8 @@ router.get(
           const r = requestMap.get(String(id));
           if (!r) return;
           activeRequestId = id;
+          const canApprove = String(r.payment_status || "").toUpperCase() === "PAID";
+          byId("detail_approve").disabled = !canApprove;
           renderDetails("License Request", [
             { label: "Request ID", value: r.request_id || r.id },
             { label: "Business Name", value: r.business_name || r.customer_name },
@@ -1329,6 +1436,9 @@ router.get(
             { label: "Current Total Devices", value: r.current_total_device_limit ?? "-" },
             { label: "Hardware Bundle", value: r.hardware_bundle || "-" },
             { label: "Amount Expected", value: r.amount_expected != null ? "K" + r.amount_expected : "-" },
+            { label: "Payment Status", value: r.payment_status || "-" },
+            { label: "Payment Reference", value: r.payment_reference || "-" },
+            { label: "Paid Amount", value: r.paid_amount != null ? "K" + r.paid_amount : "-" },
             { label: "Notes", value: r.notes || "-" },
             { label: "Machine ID", value: r.machine_id },
             { label: "Backend ID", value: r.backend_id, warn: !r.backend_id },
@@ -1351,6 +1461,43 @@ router.get(
           byId("manual_quoted_price").value = r.amount_expected ?? "";
           updateManualDerived();
           setToast("Request loaded into generator.", "var(--good)");
+        }
+      });
+
+      byId("payments_body").addEventListener("click", async (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        const id = btn.dataset.id;
+        if (btn.dataset.action === "view-payment") {
+          const res = await fetch("/api/admin/payments/" + id, { headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return setToast(data?.message || data?.error || "Failed to load payment.", "var(--bad)");
+          const r = data.row || {};
+          renderDetails("Payment Transaction", [
+            { label: "TXN ID", value: r.txn_id },
+            { label: "Amount", value: r.amount != null ? "K" + r.amount : "-" },
+            { label: "Phone", value: r.payer_phone || "-" },
+            { label: "Match Status", value: r.match_status || "-" },
+            { label: "Matched Request", value: r.matched_request_id || "-" },
+            { label: "Source", value: r.source_type || "-" },
+            { label: "Source Email", value: r.source_email || "-" },
+            { label: "Sender Email", value: r.sender_email || "-" },
+            { label: "Imported At", value: r.imported_at },
+            { label: "Notes", value: r.notes || "-" },
+            { label: "Raw Subject", value: r.raw_subject || "-" },
+            { label: "Raw Body", value: r.raw_body || "-" }
+          ]);
+        }
+        if (btn.dataset.action === "rematch") {
+          const res = await fetch("/api/admin/payments/" + id + "/rematch", {
+            method: "POST",
+            headers: authHeaders()
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return setToast(data?.message || data?.error || "Rematch failed.", "var(--bad)");
+          setToast("Rematch complete.", "var(--good)");
+          await loadPayments();
+          await loadRequests();
         }
       });
 
@@ -1553,6 +1700,12 @@ router.get(
       byId("licenses_refresh").addEventListener("click", loadLicenses);
       byId("backends_refresh").addEventListener("click", loadBackends);
       byId("businesses_refresh").addEventListener("click", loadBusinesses);
+      byId("payments_refresh").addEventListener("click", loadPayments);
+      byId("payments_status_filter").addEventListener("change", loadPayments);
+      byId("payments_search").addEventListener("input", () => {
+        clearTimeout(window.__payTimer);
+        window.__payTimer = setTimeout(loadPayments, 300);
+      });
       byId("sync_refresh").addEventListener("click", loadSyncMonitor);
       byId("settings_save").addEventListener("click", savePlatformSettings);
       byId("manual_refresh").addEventListener("click", async () => {

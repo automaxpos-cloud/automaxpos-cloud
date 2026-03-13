@@ -121,6 +121,12 @@ router.get("/", (req, res) => {
       padding: 16px;
       min-height: 90px;
     }
+    .detail-card {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
     .card h3 { margin: 0 0 6px; font-size: 14px; color: var(--muted); }
     .card .value { font-size: 22px; font-weight: 600; }
     .section {
@@ -627,6 +633,34 @@ router.get("/", (req, res) => {
             <div id="license_request_status" class="muted"></div>
           </div>
         </div>
+        <div class="card" id="payment_instructions" style="margin-top:12px;display:none;">
+          <div style="font-weight:600;margin-bottom:6px;">Airtel Money (Get Cash)</div>
+          <div class="muted" style="margin-bottom:10px;">Agent Code: <strong id="pay_agent_code">20124624</strong> • Agent Name: <strong id="pay_agent_name">JAMES PHIRI</strong></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+            <div class="detail-card" style="min-width:160px;">
+              <div class="muted">Amount Due</div>
+              <div style="font-weight:600;" id="pay_amount_due">K0</div>
+            </div>
+            <div class="detail-card" style="min-width:240px;">
+              <div class="muted">Request ID</div>
+              <div style="font-weight:600;" id="pay_request_id">-</div>
+            </div>
+            <div class="detail-card" style="min-width:200px;">
+              <div class="muted">Payment Status</div>
+              <div style="font-weight:600;" id="pay_status_text">Pending Payment</div>
+            </div>
+          </div>
+          <div class="muted" style="margin-bottom:8px;">
+            1. Open Airtel Money • 2. Choose Withdraw Cash / Get Cash • 3. Enter Agent Code: 20124624
+            • 4. Enter the exact amount shown • 5. Confirm the transaction • 6. Keep the transaction ID.
+          </div>
+          <div class="muted">After payment, your transaction will be verified automatically or by admin review.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn" id="copy_agent_code">Copy Agent Code</button>
+            <button class="btn" id="copy_amount">Copy Amount</button>
+            <button class="btn" id="copy_request_id">Copy Request ID</button>
+          </div>
+        </div>
       </div>
 
       <div class="section">
@@ -646,6 +680,7 @@ router.get("/", (req, res) => {
               <th>Amount</th>
               <th>Status</th>
               <th>Payment</th>
+              <th>Payment Ref</th>
               <th>Submitted</th>
             </tr>
           </thead>
@@ -1950,6 +1985,40 @@ router.get("/", (req, res) => {
       setInput("req_amount_expected", amountExpected != null ? ("K" + Number(amountExpected).toLocaleString()) : "");
     }
 
+    function paymentStatusLabel(status) {
+      const s = String(status || "").toLowerCase();
+      if (s === "paid") return "Payment received. Awaiting license approval.";
+      if (s === "approved") return "License approved.";
+      if (s === "rejected") return "Request rejected.";
+      if (s === "payment_under_review") return "We are verifying your payment.";
+      return "Pending Payment";
+    }
+
+    function paymentStatusShort(status) {
+      const s = String(status || "").toLowerCase();
+      if (s === "paid") return "Paid";
+      if (s === "approved") return "Approved";
+      if (s === "rejected") return "Rejected";
+      if (s === "payment_under_review") return "Under Review";
+      return "Pending Payment";
+    }
+
+    function showPaymentInstructions(request) {
+      const card = byId("payment_instructions");
+      if (!card) return;
+      if (!request) {
+        card.style.display = "none";
+        return;
+      }
+      const status = String(request.payment_status || "").toLowerCase();
+      const shouldShow = status === "pending_payment" || status === "payment_under_review" || !status;
+      card.style.display = shouldShow ? "block" : "none";
+      byId("pay_status_text").textContent = paymentStatusLabel(status);
+      byId("pay_request_id").textContent = request.request_id || "-";
+      const amount = request.amount_expected != null ? "K" + Number(request.amount_expected).toLocaleString() : "K0";
+      byId("pay_amount_due").textContent = amount;
+    }
+
     async function loadLicenseRequests() {
       const status = byId("license_requests_status");
       if (status) status.textContent = "Loading...";
@@ -1977,6 +2046,7 @@ router.get("/", (req, res) => {
       const body = byId("license-requests-body");
       if (!body) return;
       body.innerHTML = "";
+      showPaymentInstructions(rows[0] || null);
       rows.forEach((r) => {
         const tr = document.createElement("tr");
         tr.innerHTML =
@@ -1986,7 +2056,8 @@ router.get("/", (req, res) => {
           "<td>" + (r.requested_total_device_limit ?? r.extra_device_count ?? "-") + "</td>" +
           "<td>" + (r.amount_expected ? "K" + r.amount_expected : "-") + "</td>" +
           "<td>" + (r.status || "-") + "</td>" +
-          "<td>" + (r.payment_status || "-") + "</td>" +
+          "<td>" + paymentStatusShort(r.payment_status) + "</td>" +
+          "<td>" + (r.payment_reference || "-") + "</td>" +
           "<td>" + (r.created_at ? new Date(r.created_at).toLocaleString() : "-") + "</td>";
         body.appendChild(tr);
       });
@@ -2047,6 +2118,11 @@ router.get("/", (req, res) => {
       setLicenseRequestStatus("Request submitted. ID: " + (data.request_id || ""), "var(--good)");
       const notes = byId("req_notes");
       if (notes) notes.value = "";
+      showPaymentInstructions({
+        request_id: data.request_id || "",
+        payment_status: "pending_payment",
+        amount_expected: Number.isFinite(amountExpected) ? amountExpected : null
+      });
       await loadLicenseRequests();
     }
 
@@ -2170,6 +2246,15 @@ router.get("/", (req, res) => {
       });
       bind("license_request_btn", "click", submitLicenseRequest);
       bind("license_requests_refresh", "click", loadLicenseRequests);
+      bind("copy_agent_code", "click", () => navigator.clipboard.writeText("20124624"));
+      bind("copy_amount", "click", () => {
+        const amt = byId("pay_amount_due")?.textContent || "";
+        if (amt) navigator.clipboard.writeText(amt.replace(/[^\d.]/g, ""));
+      });
+      bind("copy_request_id", "click", () => {
+        const reqId = byId("pay_request_id")?.textContent || "";
+        if (reqId && reqId !== "-") navigator.clipboard.writeText(reqId);
+      });
       bind("req_type", "change", updateRequestDerivedFields);
       bind("req_plan", "change", updateRequestDerivedFields);
       bind("req_extra_devices", "input", updateRequestDerivedFields);

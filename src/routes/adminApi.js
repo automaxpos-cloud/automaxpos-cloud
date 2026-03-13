@@ -2,6 +2,7 @@ const express = require("express");
 const { pool } = require("../db/pool");
 const adminJwt = require("../middleware/adminJwt");
 const licenseService = require("../services/licenseService");
+const { matchPaymentTransaction } = require("../services/paymentMatchService");
 
 const router = express.Router();
 
@@ -133,7 +134,11 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.requested_at,
         lr.status,
         lr.payment_status,
+        lr.payment_reference,
+        lr.payer_phone,
+        lr.paid_amount,
         lr.payment_method,
+        lr.payment_source,
         lr.payment_txn_id,
         lr.payment_amount,
         lr.payment_confirmed_by,
@@ -272,7 +277,8 @@ router.post(
          current_plan,
          current_total_device_limit,
          hardware_bundle,
-         amount_expected
+         amount_expected,
+         payment_status
        FROM license_requests
        WHERE id=$1`,
       [requestId]
@@ -282,6 +288,9 @@ router.post(
     }
 
     const row = reqRow.rows[0];
+    if (String(row.payment_status || "").toLowerCase() !== "paid") {
+      return res.status(403).json({ ok: false, error: "PAYMENT_REQUIRED", message: "Payment not confirmed" });
+    }
     let backendId = row.backend_id;
     if (!backendId && row.machine_id) {
       const backendRes = await pool.query(
@@ -373,6 +382,86 @@ router.post(
   }
   }
 );
+
+router.get("/payments", adminJwt, async (req, res) => {
+  try {
+    const status = String(req.query.status || "").trim();
+    const q = String(req.query.q || "").trim();
+    const rows = await pool.query(
+      `
+      SELECT
+        id,
+        txn_id,
+        payer_phone,
+        amount,
+        currency,
+        match_status,
+        matched_request_id,
+        source_type,
+        source_email,
+        sender_email,
+        imported_at,
+        processed_at
+      FROM payment_transactions
+      WHERE ($1 = '' OR match_status = $1)
+        AND ($2 = '' OR txn_id ILIKE '%' || $2 || '%' OR payer_phone ILIKE '%' || $2 || '%')
+      ORDER BY imported_at DESC
+      LIMIT 500
+      `,
+      [status, q]
+    );
+    const summary = await pool.query(
+      `
+      SELECT
+        COUNT(*) FILTER (WHERE imported_at >= CURRENT_DATE) AS imported_today,
+        COUNT(*) FILTER (WHERE match_status = 'matched') AS matched,
+        COUNT(*) FILTER (WHERE match_status = 'unmatched') AS unmatched,
+        COUNT(*) FILTER (WHERE match_status = 'duplicate') AS duplicate
+      FROM payment_transactions
+      `
+    );
+    return res.json({ ok: true, summary: summary.rows[0] || {}, rows: rows.rows || [] });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN PAYMENTS ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load payments" });
+  }
+});
+
+router.get("/payments/:id", adminJwt, async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+    const rows = await pool.query(
+      `SELECT * FROM payment_transactions WHERE id=$1 LIMIT 1`,
+      [id]
+    );
+    if (!rows.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    return res.json({ ok: true, row: rows.rows[0] });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN PAYMENT DETAIL ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load payment" });
+  }
+});
+
+router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+    const rows = await pool.query(
+      `SELECT * FROM payment_transactions WHERE id=$1 LIMIT 1`,
+      [id]
+    );
+    if (!rows.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    const result = await matchPaymentTransaction(rows.rows[0]);
+    return res.json({ ok: true, result });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN PAYMENT REMATCH ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to rematch payment" });
+  }
+});
 
   router.get("/licenses", adminJwt, async (_req, res) => {
     try {

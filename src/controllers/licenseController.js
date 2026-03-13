@@ -203,11 +203,13 @@ async function request(req, res) {
         current_plan,
         current_total_device_limit,
         hardware_bundle,
-        amount_expected
+        amount_expected,
+        payment_status,
+        payment_method
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
         $13,$14,$15,$16,$17,NOW(),NOW(),
-        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30
+        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32
       )
       `,
       [
@@ -240,7 +242,9 @@ async function request(req, res) {
         String(body.current_plan || ""),
         Number.isFinite(Number(body.current_total_device_limit)) ? Number(body.current_total_device_limit) : null,
         String(body.hardware_bundle || ""),
-        Number.isFinite(Number(body.amount_expected)) ? Number(body.amount_expected) : null
+        Number.isFinite(Number(body.amount_expected)) ? Number(body.amount_expected) : null,
+        "pending_payment",
+        "airtel_get_cash"
       ]
     );
 
@@ -269,6 +273,10 @@ async function requests(req, res) {
          amount_expected,
          status,
          payment_status,
+         payment_reference,
+         paid_amount,
+         payment_method,
+         payment_source,
          created_at
        FROM license_requests
        WHERE backend_id = $1
@@ -296,6 +304,10 @@ async function requests(req, res) {
        amount_expected,
        status,
        payment_status,
+       payment_reference,
+       paid_amount,
+       payment_method,
+       payment_source,
        created_at
      FROM license_requests
      WHERE backend_id = $1
