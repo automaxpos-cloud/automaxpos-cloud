@@ -22,6 +22,12 @@ router.get(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>JP Max Admin Portal - AutoMax POS Control Panel</title>
+  <script>
+    (function () {
+      const saved = localStorage.getItem("automax-theme") || "dark";
+      document.documentElement.setAttribute("data-theme", saved);
+    })();
+  </script>
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
     :root {
@@ -36,6 +42,19 @@ router.get(
       --warn: #facc15;
       --border: #1f2a40;
       --neutral: #94a3b8;
+    }
+    :root[data-theme="light"] {
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --panel-2: #f7f9fc;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+      --good: #16a34a;
+      --bad: #dc2626;
+      --warn: #d97706;
+      --border: #d9e0ee;
+      --neutral: #64748b;
     }
     * { box-sizing: border-box; }
     body {
@@ -70,6 +89,33 @@ router.get(
     }
     nav a.active { background: var(--accent); }
     main { padding: 20px 28px; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .page-title { margin: 0; font-size: 20px; font-weight: 600; }
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      color: var(--text);
+      cursor: pointer;
+    }
+    :root[data-theme="light"] .theme-toggle {
+      background: #e2e8f0;
+      color: #0f172a;
+      border-color: #cbd5e1;
+    }
+    .theme-toggle:hover { border-color: var(--accent); }
+    .theme-icon { width: 16px; height: 16px; }
     h1 { margin: 0 0 6px; font-size: 22px; }
     .muted { color: var(--muted); }
     .grid { display: grid; gap: 16px; }
@@ -208,6 +254,20 @@ router.get(
       </div>
     </aside>
     <main>
+      <div class="topbar">
+        <div>
+          <div class="page-title">JP Max Admin Portal</div>
+          <div class="muted">AutoMax POS Control Panel</div>
+        </div>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch theme" title="Switch theme">
+          <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M12 2a1 1 0 0 1 1 1v1.1a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1Zm6.36 3.64a1 1 0 0 1 0 1.41l-.78.78a1 1 0 1 1-1.41-1.41l.78-.78a1 1 0 0 1 1.41 0ZM12 6a6 6 0 1 1 0 12 6 6 0 0 1 0-12Zm9 5a1 1 0 0 1 0 2h-1.1a1 1 0 1 1 0-2H21Zm-3.64 7.36a1 1 0 0 1-1.41 0l-.78-.78a1 1 0 0 1 1.41-1.41l.78.78a1 1 0 0 1 0 1.41ZM13 19.9a1 1 0 1 1-2 0V21a1 1 0 1 1 2 0v-1.1ZM5.64 18.36a1 1 0 0 1 0-1.41l.78-.78a1 1 0 1 1 1.41 1.41l-.78.78a1 1 0 0 1-1.41 0ZM4.1 13a1 1 0 1 1 0-2H3a1 1 0 1 1 0 2h1.1Zm1.54-7.36a1 1 0 0 1 1.41 0l.78.78a1 1 0 1 1-1.41 1.41l-.78-.78a1 1 0 0 1 0-1.41Z"/>
+          </svg>
+          <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M21 14.5A8.5 8.5 0 1 1 9.5 3a.75.75 0 0 1 .74.98 7 7 0 0 0 9.78 9.78.75.75 0 0 1 .98.74Z"/>
+          </svg>
+        </button>
+      </div>
       <section id="section-portal" class="hidden">
         <h1>JP Max Admin Portal</h1>
         <div class="muted">Internal platform control center</div>
@@ -1258,6 +1318,16 @@ router.get(
       showSection();
       bindTableActions();
       bindPaymentModal();
+
+      const themeBtn = byId("themeToggle");
+      if (themeBtn) {
+        themeBtn.addEventListener("click", () => {
+          const current = localStorage.getItem("automax-theme") || "dark";
+          const next = current === "dark" ? "light" : "dark";
+          localStorage.setItem("automax-theme", next);
+          document.documentElement.setAttribute("data-theme", next);
+        });
+      }
 
       byId("admin_login_btn").addEventListener("click", doLogin);
       byId("admin_logout_btn").addEventListener("click", logout);
