@@ -56,7 +56,7 @@ async function matchPaymentTransaction(txn) {
   }
 
   const baseRows = await pool.query(
-    `SELECT id, request_id, phone, payment_status, amount_expected, created_at
+    `SELECT id, request_id, phone, payer_phone, payment_status, amount_expected, created_at
      FROM license_requests
      WHERE COALESCE(payment_status,'pending_payment') IN ('pending_payment','payment_under_review')
        AND amount_expected = $1
@@ -68,7 +68,7 @@ async function matchPaymentTransaction(txn) {
 
   let candidates = rows;
   if (payerPhone) {
-    candidates = rows.filter((r) => endsWithDigits(normalizePhone(r.phone), payerPhone));
+    candidates = rows.filter((r) => endsWithDigits(normalizePhone(r.payer_phone), payerPhone));
     if (candidates.length === 1) {
       await applyMatch({ txnId: txn.txn_id, requestId: candidates[0].id, amount, payerPhone });
       return { ok: true, matched_request_id: candidates[0].id };
@@ -78,6 +78,14 @@ async function matchPaymentTransaction(txn) {
   if (rows.length === 1) {
     await applyMatch({ txnId: txn.txn_id, requestId: rows[0].id, amount, payerPhone });
     return { ok: true, matched_request_id: rows[0].id };
+  }
+
+  if (!payerPhone && rows.length > 0) {
+    const byContact = rows.filter((r) => endsWithDigits(normalizePhone(r.phone), normalizePhone(txn.payer_phone)));
+    if (byContact.length === 1) {
+      await applyMatch({ txnId: txn.txn_id, requestId: byContact[0].id, amount, payerPhone });
+      return { ok: true, matched_request_id: byContact[0].id };
+    }
   }
 
   if (rows.length > 1) {

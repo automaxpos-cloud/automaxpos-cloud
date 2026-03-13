@@ -137,6 +137,7 @@ async function request(req, res) {
     const contactPerson = String(body.contact_person || "").trim();
     const email = String(body.email || "").trim();
     const phone = String(body.phone || "").trim();
+    const payerPhone = String(body.payer_phone || "").trim();
     const requestedPlan = String(body.requested_plan || body.plan || "").trim();
     const requestedTotal = Number.isFinite(Number(body.requested_total_device_limit))
       ? Number(body.requested_total_device_limit)
@@ -145,7 +146,7 @@ async function request(req, res) {
       ? Number(body.device_count)
       : requestedTotal;
 
-    if (!businessName || !contactPerson || !email || !phone || !requestedPlan || deviceCount == null) {
+    if (!businessName || !contactPerson || !email || !phone || !payerPhone || !requestedPlan || deviceCount == null) {
       return res.status(400).json({ ok: false, error: "MISSING_FIELDS", message: "Missing required contact or plan fields" });
     }
 
@@ -205,11 +206,12 @@ async function request(req, res) {
         hardware_bundle,
         amount_expected,
         payment_status,
-        payment_method
+        payment_method,
+        payer_phone
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
         $13,$14,$15,$16,$17,NOW(),NOW(),
-        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32
+        $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
       )
       `,
       [
@@ -244,7 +246,8 @@ async function request(req, res) {
         String(body.hardware_bundle || ""),
         Number.isFinite(Number(body.amount_expected)) ? Number(body.amount_expected) : null,
         "pending_payment",
-        "airtel_get_cash"
+        "airtel_get_cash",
+        payerPhone
       ]
     );
 
@@ -277,6 +280,7 @@ async function requests(req, res) {
          paid_amount,
          payment_method,
          payment_source,
+         payer_phone,
          created_at
        FROM license_requests
        WHERE backend_id = $1
@@ -308,6 +312,7 @@ async function requests(req, res) {
        paid_amount,
        payment_method,
        payment_source,
+       payer_phone,
        created_at
      FROM license_requests
      WHERE backend_id = $1

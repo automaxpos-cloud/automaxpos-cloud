@@ -624,6 +624,16 @@ router.get("/", (req, res) => {
             <label class="muted">Estimated Amount</label>
             <input id="req_amount_expected" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
+          <div>
+            <label class="muted">Payer’s Phone Number</label>
+            <input id="req_payer_phone" type="text" placeholder="Airtel Money payment phone" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+            <div class="muted" style="font-size:12px;margin-top:4px;">
+              Enter the phone number that will be used to make the Airtel Money payment. This number is used for automatic payment verification.
+            </div>
+            <div class="muted" style="font-size:12px;margin-top:2px;">
+              If the contact phone and payment phone are the same, enter the same number here.
+            </div>
+          </div>
           <div style="grid-column:1/-1;">
             <label class="muted">Notes</label>
             <textarea id="req_notes" rows="3" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);"></textarea>
@@ -2017,6 +2027,20 @@ router.get("/", (req, res) => {
       byId("pay_request_id").textContent = request.request_id || "-";
       const amount = request.amount_expected != null ? "K" + Number(request.amount_expected).toLocaleString() : "K0";
       byId("pay_amount_due").textContent = amount;
+      const payPhone = request.payer_phone || byId("req_payer_phone")?.value || "";
+      if (payPhone) {
+        const note = "Use payer phone: " + payPhone;
+        if (!byId("pay_phone_note")) {
+          const el = document.createElement("div");
+          el.id = "pay_phone_note";
+          el.className = "muted";
+          el.style.marginTop = "6px";
+          el.textContent = note;
+          card.appendChild(el);
+        } else {
+          byId("pay_phone_note").textContent = note;
+        }
+      }
     }
 
     async function loadLicenseRequests() {
@@ -2086,6 +2110,7 @@ router.get("/", (req, res) => {
         contact_person: byId("req_contact_person")?.value || "",
         email: byId("req_email")?.value || "",
         phone: byId("req_phone")?.value || "",
+        payer_phone: byId("req_payer_phone")?.value || "",
         request_type: requestType,
         requested_plan: requestedPlan,
         extra_device_count: Number(byId("req_extra_devices")?.value || 0),
@@ -2115,13 +2140,14 @@ router.get("/", (req, res) => {
         setLicenseRequestStatus(msg, "var(--bad)");
         return;
       }
-      setLicenseRequestStatus("Request submitted. ID: " + (data.request_id || ""), "var(--good)");
+      setLicenseRequestStatus("Request submitted. ID: " + (data.request_id || "") + ". Payment verification will use the Payer’s Phone Number entered in this request.", "var(--good)");
       const notes = byId("req_notes");
       if (notes) notes.value = "";
       showPaymentInstructions({
         request_id: data.request_id || "",
         payment_status: "pending_payment",
-        amount_expected: Number.isFinite(amountExpected) ? amountExpected : null
+        amount_expected: Number.isFinite(amountExpected) ? amountExpected : null,
+        payer_phone: byId("req_payer_phone")?.value || ""
       });
       await loadLicenseRequests();
     }

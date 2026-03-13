@@ -139,6 +139,7 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.paid_amount,
         lr.payment_method,
         lr.payment_source,
+        lr.payer_phone AS request_payer_phone,
         lr.payment_txn_id,
         lr.payment_amount,
         lr.payment_confirmed_by,
