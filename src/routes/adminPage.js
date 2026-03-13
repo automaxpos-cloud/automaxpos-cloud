@@ -1153,9 +1153,12 @@ router.get(
       const res = await fetch("/api/admin/platform-settings", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        const code = data?.code || data?.error || "";
         const msg = data?.message || data?.error || "Failed to load settings.";
         byId("settings_status").textContent = msg;
-        if (!silent) setToast("Failed to load settings.", "var(--bad)");
+        if (!silent && code !== "PLATFORM_SETTINGS_TABLE_MISSING") {
+          setToast("Failed to load settings.", "var(--bad)");
+        }
         return;
       }
       const s = data.settings || {};
@@ -1163,7 +1166,8 @@ router.get(
       byId("settings_online_threshold").value = s.heartbeat_online_threshold_seconds ?? 300;
       byId("settings_offline_threshold").value = s.heartbeat_offline_threshold_seconds ?? 900;
       if (s.source === "defaults_table_missing") {
-        byId("settings_status").textContent = "Using defaults (storage not initialized)";
+        byId("settings_status").textContent =
+          "Using defaults. Saving is unavailable until platform settings storage is initialized.";
       } else if (s.source === "defaults_created") {
         byId("settings_status").textContent = "Defaults created";
       } else {
@@ -1202,8 +1206,12 @@ router.get(
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        const code = data?.code || data?.error || "";
         const msg = data?.message || data?.error || "Failed to save settings.";
         byId("settings_status").textContent = msg;
+        if (code === "PLATFORM_SETTINGS_TABLE_MISSING") {
+          return;
+        }
         return setToast(msg, "var(--bad)");
       }
       byId("settings_status").textContent = "Settings saved " + new Date().toLocaleTimeString();
