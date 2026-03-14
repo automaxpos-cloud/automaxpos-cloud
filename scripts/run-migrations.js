@@ -10,7 +10,8 @@ async function ensureMigrationsTable(client) {
   );
 }
 
-async function main() {
+async function runMigrations(options = {}) {
+  const closePool = options.closePool !== false;
   const client = await pool.connect();
   try {
     await ensureMigrationsTable(client);
@@ -24,6 +25,7 @@ async function main() {
 
     for (const file of files) {
       if (applied.has(file)) {
+        console.log("[MIGRATE] skip", file);
         continue;
       }
       const fullPath = path.join(MIGRATIONS_DIR, file);
@@ -40,11 +42,25 @@ async function main() {
       await client.query("ROLLBACK");
     } catch {}
     console.error("[MIGRATE] failed:", err && err.message ? err.message : err);
-    process.exitCode = 1;
+    throw err;
   } finally {
     client.release();
-    await pool.end();
+    if (closePool) {
+      await pool.end();
+    }
   }
 }
 
-main();
+async function main() {
+  try {
+    await runMigrations({ closePool: true });
+  } catch {
+    process.exitCode = 1;
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = { runMigrations };

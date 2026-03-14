@@ -9,7 +9,21 @@ const { startPaymentEmailImporter } = require("./src/services/paymentEmailImport
 const port = Number(PORT) || 3001;
 const host = "0.0.0.0";
 
-app.listen(port, host, () => {
-  console.log(`AutoMaxPOS Cloud API running on ${host}:${port}`);
-  startPaymentEmailImporter();
-});
+async function start() {
+  if (String(process.env.AUTO_RUN_MIGRATIONS || "").toLowerCase() === "true") {
+    const { runMigrations } = require("./scripts/run-migrations");
+    try {
+      await runMigrations({ closePool: false });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[STARTUP] migrations failed:", err && err.message ? err.message : err);
+      process.exit(1);
+    }
+  }
+  app.listen(port, host, () => {
+    console.log(`AutoMaxPOS Cloud API running on ${host}:${port}`);
+    startPaymentEmailImporter();
+  });
+}
+
+start();
