@@ -42,7 +42,7 @@ router.get("/", (req, res) => {
       #nav-licenses,
       #export_pdf_btn,
       #export_xlsx_btn {
-        transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+        transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
         cursor: pointer;
       }
       #nav-dashboard:hover,
@@ -51,9 +51,7 @@ router.get("/", (req, res) => {
       #nav-licenses:hover,
       #export_pdf_btn:hover,
       #export_xlsx_btn:hover {
-        background: rgba(46, 108, 255, 0.18);
-        border-color: rgba(46, 108, 255, 0.6);
-        box-shadow: 0 0 0 2px rgba(46, 108, 255, 0.15);
+        border-color: var(--accent);
       }
 
     @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
