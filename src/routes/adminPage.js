@@ -370,20 +370,12 @@ router.get(
               <th>Request ID</th>
               <th>Business Name</th>
               <th>Contact</th>
-              <th>Email</th>
-              <th>Phone</th>
               <th>Request Type</th>
               <th>Requested Plan</th>
               <th>Requested Devices</th>
-              <th>Hardware Bundle</th>
               <th>Amount</th>
-              <th>Machine ID</th>
-              <th>Backend ID</th>
-              <th>Requested At</th>
               <th>Status</th>
               <th>Payment Status</th>
-              <th>Payment Ref</th>
-              <th>Paid Amount</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -953,29 +945,43 @@ router.get(
           r.extra_device_count ??
           "-";
         const tr = document.createElement("tr");
+        const detailId = "req_detail_" + r.id;
+        const detailHtml =
+          "<div class='req-detail'>" +
+          "<div><span class='muted'>Email:</span> " + (r.email || "-") + "</div>" +
+          "<div><span class='muted'>Phone:</span> " + (r.phone || "-") + "</div>" +
+          "<div><span class='muted'>Hardware:</span> " + (r.hardware_bundle || "-") + "</div>" +
+          "<div><span class='muted'>Machine ID:</span> " + (r.machine_id || "-") + "</div>" +
+          "<div><span class='muted'>Backend ID:</span> " + (r.backend_id || "-") + "</div>" +
+          "<div><span class='muted'>Requested At:</span> " + (r.requested_at ? new Date(r.requested_at).toLocaleString() : "-") + "</div>" +
+          "<div><span class='muted'>Payment Ref:</span> " + (r.payment_reference || "-") + "</div>" +
+          "<div><span class='muted'>Paid Amount:</span> " + (r.paid_amount != null ? "K" + r.paid_amount : "-") + "</div>" +
+          "<div class='span-2'><span class='muted'>Notes:</span> " + (r.notes || "-") + "</div>" +
+          "</div>";
+
         tr.innerHTML =
-          "<td><button class='btn' data-copy='" + (r.request_id || r.id || "") + "'>Copy</button> " + (r.request_id || r.id || "-") + "</td>" +
+          "<td><button class='btn ghost' data-action='toggle-detail' data-target='" + detailId + "'>Details</button> " +
+          (r.request_id || r.id || "-") + "</td>" +
           "<td>" + businessName + "</td>" +
           "<td>" + contactName + "</td>" +
-          "<td>" + (r.email || "-") + "</td>" +
-          "<td>" + (r.phone || "-") + "</td>" +
           "<td>" + (r.request_type || "-") + "</td>" +
           "<td>" + requestedPlan + "</td>" +
           "<td>" + requestedDevices + "</td>" +
-          "<td>" + (r.hardware_bundle || "-") + "</td>" +
           "<td>" + (r.amount_expected != null ? "K" + r.amount_expected : "-") + "</td>" +
-          "<td>" + (r.machine_id ? r.machine_id.slice(0, 10) + "..." : "-") + "</td>" +
-          "<td>" + (r.backend_id || "-") + "</td>" +
-          "<td>" + (r.requested_at ? new Date(r.requested_at).toLocaleString() : "-") + "</td>" +
           "<td>" + statusBadge(r.status || r.request_status) + "</td>" +
           "<td>" + paymentStatusBadge(r.payment_status) + "</td>" +
-          "<td>" + (r.payment_reference || "-") + "</td>" +
-          "<td>" + (r.paid_amount != null ? "K" + r.paid_amount : "-") + "</td>" +
           "<td>" +
           "<button class='btn' data-action='view' data-id='" + r.id + "'>View</button> " +
           "<button class='btn' data-action='approve' data-id='" + r.id + "'" + (paid ? "" : " disabled") + ">Approve</button> " +
           "<button class='btn' data-action='reject' data-id='" + r.id + "'>Reject</button>" +
           "</td>";
+
+        const detailRow = document.createElement("tr");
+        detailRow.className = "req-detail-row hidden";
+        detailRow.id = detailId;
+        detailRow.innerHTML = "<td colspan='10'>" + detailHtml + "</td>";
+        body.appendChild(tr);
+        body.appendChild(detailRow);
         body.appendChild(tr);
       });
     }
