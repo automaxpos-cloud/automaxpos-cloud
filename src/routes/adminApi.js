@@ -338,7 +338,7 @@ router.post(
 
     await pool.query(
       `UPDATE license_requests
-       SET status='APPROVED',
+       SET status='LICENSE_READY',
            request_status=COALESCE(request_status,'approved'),
            reviewed_at=NOW(),
            updated_at=NOW()

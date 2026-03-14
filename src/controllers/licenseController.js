@@ -418,6 +418,18 @@ async function pull(req, res) {
       oldValue: null,
       newValue: { status: lic.status }
     });
+
+    try {
+      await pool.query(
+        `UPDATE license_requests
+         SET status='PULLED_BY_BACKEND',
+             updated_at=NOW()
+         WHERE backend_id=$1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [backend.id]
+      );
+    } catch (_) {}
     return res.json({
       ok: true,
       license: buildLicenseResponse(lic),
@@ -454,6 +466,17 @@ async function activate(req, res) {
       oldValue: null,
       newValue: { status: lic.status }
     });
+    try {
+      await pool.query(
+        `UPDATE license_requests
+         SET status='ACTIVATED',
+             updated_at=NOW()
+         WHERE backend_id=$1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [backend.id]
+      );
+    } catch (_) {}
     return res.json({ ok: true });
   } catch (err) {
     // eslint-disable-next-line no-console
