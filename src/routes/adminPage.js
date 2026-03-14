@@ -11,6 +11,8 @@ router.get(
     "/automax-pos/requests",
     "/automax-pos/issued",
     "/automax-pos/licenses",
+    "/automax-pos/activations",
+    "/automax-pos/demos",
     "/automax-pos/backends",
     "/automax-pos/businesses",
     "/automax-pos/sync",
@@ -2495,6 +2497,8 @@ let activeRequestId = null;
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           toggleLogin(true, data.admin || {});
+          setActiveNav();
+          showSection();
           applyPaymentsRange(byId("payments_range")?.value || "today");
           await refreshAll();
           await loadBusinesses();
