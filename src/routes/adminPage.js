@@ -739,6 +739,10 @@ router.get(
               <input id="admin_user_full_name" type="text" placeholder="Full name" style="width:100%;" />
             </div>
             <div>
+              <label class="muted">Username</label>
+              <input id="admin_user_username" type="text" placeholder="username" style="width:100%;" />
+            </div>
+            <div>
               <label class="muted">Email</label>
               <input id="admin_user_email" type="email" placeholder="email@example.com" style="width:100%;" />
             </div>
@@ -804,6 +808,7 @@ router.get(
           <thead>
             <tr>
               <th>Name</th>
+              <th>Username</th>
               <th>Email</th>
               <th>Role</th>
               <th>Status</th>
@@ -1740,6 +1745,7 @@ let activeRequestId = null;
     function clearAdminUserForm() {
       editingAdminUserId = null;
       byId("admin_user_full_name").value = "";
+      byId("admin_user_username").value = "";
       byId("admin_user_email").value = "";
       byId("admin_user_role").value = "";
       byId("admin_user_active").value = "true";
@@ -1754,6 +1760,7 @@ let activeRequestId = null;
     function fillAdminUserForm(u) {
       editingAdminUserId = u.id;
       byId("admin_user_full_name").value = u.full_name || "";
+      byId("admin_user_username").value = u.username || "";
       byId("admin_user_email").value = u.email || u.username || "";
       byId("admin_user_role").value = (u.role || "").toUpperCase() === "SUPERADMIN" ? "SUPER_ADMIN" : u.role || "";
       byId("admin_user_active").value = u.is_active === false ? "false" : "true";
@@ -1806,7 +1813,8 @@ let activeRequestId = null;
         const createdAt = r.created_at ? new Date(r.created_at).toLocaleString() : "-";
         tr.innerHTML =
           "<td>" + (r.full_name || "-") + "</td>" +
-          "<td>" + (r.email || r.username || "-") + "</td>" +
+          "<td>" + (r.username || "-") + "</td>" +
+          "<td>" + (r.email || "-") + "</td>" +
           "<td>" + roleBadge + "</td>" +
           "<td>" + status + "</td>" +
           "<td>" + lastLogin + "</td>" +
@@ -2382,13 +2390,14 @@ let activeRequestId = null;
       byId("admin_user_save")?.addEventListener("click", async () => {
         if (!isSuperAdmin()) return setToast("SUPER_ADMIN only.", "var(--warn)");
         const fullName = byId("admin_user_full_name").value.trim();
+        const username = byId("admin_user_username").value.trim();
         const email = byId("admin_user_email").value.trim().toLowerCase();
         const role = byId("admin_user_role").value;
         const isActive = byId("admin_user_active").value === "true";
         const pass = byId("admin_user_password").value;
         const pass2 = byId("admin_user_password2").value;
-        if (!fullName || !email || !role) {
-          byId("admin_user_status").textContent = "Full name, email, and role are required.";
+        if (!fullName || !username || !email || !role) {
+          byId("admin_user_status").textContent = "Full name, username, email, and role are required.";
           return;
         }
         if (!editingAdminUserId) {
@@ -2405,7 +2414,7 @@ let activeRequestId = null;
           const res = await fetch("/api/admin/users/" + editingAdminUserId, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ full_name: fullName, email, role, is_active: isActive })
+            body: JSON.stringify({ full_name: fullName, username, email, role, is_active: isActive })
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
@@ -2421,7 +2430,7 @@ let activeRequestId = null;
         const res = await fetch("/api/admin/users", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeaders() },
-          body: JSON.stringify({ full_name: fullName, email, password: pass, role, is_active: isActive })
+          body: JSON.stringify({ full_name: fullName, username, email, password: pass, role, is_active: isActive })
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {

@@ -230,33 +230,38 @@ router.post("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) =
       return res.status(500).json({ ok: false, error: "MISSING_TABLE", message: "cloud_users table missing" });
     }
     const fullName = String(req.body?.full_name || "").trim();
+    const username = String(req.body?.username || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
     const role = normalizeAdminRole(req.body?.role);
     const isActive = req.body?.is_active !== false;
 
     if (!fullName) return res.status(400).json({ ok: false, error: "FULL_NAME_REQUIRED" });
+    if (!username) return res.status(400).json({ ok: false, error: "USERNAME_REQUIRED" });
     if (!email) return res.status(400).json({ ok: false, error: "EMAIL_REQUIRED" });
     if (!password) return res.status(400).json({ ok: false, error: "PASSWORD_REQUIRED" });
     if (!role) return res.status(400).json({ ok: false, error: "INVALID_ROLE" });
+    if (!/^[A-Za-z0-9._-]+$/.test(username)) {
+      return res.status(400).json({ ok: false, error: "INVALID_USERNAME" });
+    }
 
     const cols = await getCloudUsersColumns();
     const emailCol = cols.has("email");
     const existing = await pool.query(
       emailCol
-        ? `SELECT id FROM cloud_users WHERE LOWER(email) = $1 OR LOWER(username) = $1 LIMIT 1`
+        ? `SELECT id FROM cloud_users WHERE LOWER(email) = $1 OR LOWER(username) = $2 LIMIT 1`
         : `SELECT id FROM cloud_users WHERE LOWER(username) = $1 LIMIT 1`,
-      [email]
+      emailCol ? [email, username.toLowerCase()] : [username.toLowerCase()]
     );
     if (existing.rows.length) {
-      return res.status(400).json({ ok: false, error: "DUPLICATE_EMAIL", message: "Email already exists" });
+      return res.status(400).json({ ok: false, error: "DUPLICATE_USER", message: "Email or username already exists" });
     }
 
     const bcrypt = require("bcrypt");
     const hash = await bcrypt.hash(password, 10);
     const fields = ["username", "password_hash", "full_name", "role", "is_active", "created_at", "updated_at"];
-    const values = [email, hash, fullName, role, isActive, "NOW()", "NOW()"];
-    const params = [email, hash, fullName, role, isActive];
+    const values = [username, hash, fullName, role, isActive, "NOW()", "NOW()"];
+    const params = [username, hash, fullName, role, isActive];
     let placeholders = ["$1", "$2", "$3", "$4", "$5", "NOW()", "NOW()"];
     let idx = 6;
     if (emailCol) {
@@ -304,6 +309,7 @@ router.patch("/users/:id", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, r
     const current = existing.rows[0];
 
     const fullName = req.body?.full_name != null ? String(req.body.full_name || "").trim() : null;
+    const username = req.body?.username != null ? String(req.body.username || "").trim() : null;
     const email = req.body?.email != null ? String(req.body.email || "").trim().toLowerCase() : null;
     const role = req.body?.role != null ? normalizeAdminRole(req.body.role) : null;
     const isActive = typeof req.body?.is_active === "boolean" ? req.body.is_active : null;
@@ -311,13 +317,27 @@ router.patch("/users/:id", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, r
     if (req.body?.role != null && !role) {
       return res.status(400).json({ ok: false, error: "INVALID_ROLE" });
     }
-    if (email) {
+    if (username && !/^[A-Za-z0-9._-]+$/.test(username)) {
+      return res.status(400).json({ ok: false, error: "INVALID_USERNAME" });
+    }
+
+    const cols = await getCloudUsersColumns();
+    if (email && cols.has("email")) {
       const dup = await pool.query(
         `SELECT id FROM cloud_users WHERE LOWER(email) = $1 AND id <> $2 LIMIT 1`,
         [email, id]
       );
       if (dup.rows.length) {
         return res.status(400).json({ ok: false, error: "DUPLICATE_EMAIL", message: "Email already exists" });
+      }
+    }
+    if (username && cols.has("username")) {
+      const dup = await pool.query(
+        `SELECT id FROM cloud_users WHERE LOWER(username) = $1 AND id <> $2 LIMIT 1`,
+        [username.toLowerCase(), id]
+      );
+      if (dup.rows.length) {
+        return res.status(400).json({ ok: false, error: "DUPLICATE_USERNAME", message: "Username already exists" });
       }
     }
 
@@ -336,28 +356,43 @@ router.patch("/users/:id", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, r
       }
     }
 
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    updates.push(`full_name = COALESCE($${idx++}, full_name)`);
+    params.push(fullName);
+
+    if (cols.has("email")) {
+      updates.push(`email = COALESCE($${idx++}, email)`);
+      params.push(email);
+    }
+    if (cols.has("username")) {
+      updates.push(`username = COALESCE($${idx++}, username)`);
+      params.push(username);
+    }
+
+    updates.push(`role = $${idx++}`);
+    params.push(nextRole);
+
+    const isActiveIndex = idx;
+    updates.push(`is_active = COALESCE($${idx++}, is_active)`);
+    params.push(isActive);
+
+    updates.push(`revoked_at = CASE WHEN $${isActiveIndex} = FALSE THEN NOW() ELSE revoked_at END`);
+    updates.push(`revoked_by = CASE WHEN $${isActiveIndex} = FALSE THEN $${idx++} ELSE revoked_by END`);
+    params.push(isActive === false ? (req.admin?.user_id || null) : null);
+
+    updates.push(`updated_at = NOW()`);
+
     const result = await pool.query(
       `
       UPDATE cloud_users
-      SET full_name = COALESCE($1, full_name),
-          email = COALESCE($2, email),
-          username = COALESCE($2, username),
-          role = $3,
-          is_active = COALESCE($4, is_active),
-          revoked_at = CASE WHEN $4 = FALSE THEN NOW() ELSE revoked_at END,
-          revoked_by = CASE WHEN $4 = FALSE THEN $5 ELSE revoked_by END,
-          updated_at = NOW()
-      WHERE id = $6
+      SET ${updates.join(", ")}
+      WHERE id = $${idx}
       RETURNING id, role, is_active
       `,
-      [
-        fullName,
-        email,
-        nextRole,
-        isActive,
-        isActive === false ? (req.admin?.user_id || null) : null,
-        id
-      ]
+      [...params, id]
     );
     await logAdminUserAudit(req.admin, "ADMIN_USER_UPDATED", id, {
       role: nextRole,
