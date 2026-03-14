@@ -675,7 +675,7 @@ router.get("/", (req, res) => {
             <label class="muted">Estimated Amount</label>
             <input id="req_amount_expected" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
-          <d          <div style="grid-column:1/-1;">
+          <div style="grid-column:1/-1;">
             <div class="payer-split" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
               <div>
                 <label class="muted">Payer Phone Number</label>
@@ -1995,6 +1995,24 @@ function showSection(name) {
       setLicenseRequestStatus("", "var(--muted)");
     }
 
+    function clearLicenseRequestForm() {
+      setInput("req_business_name", "");
+      setInput("req_contact_person", "");
+      setInput("req_email", "");
+      setInput("req_phone", "");
+      setInput("req_payer_phone", "");
+      setInput("req_notes", "");
+      setInput("req_extra_devices", "0");
+      const typeSel = byId("req_type");
+      if (typeSel) typeSel.value = "new_license";
+      const planSel = byId("req_plan");
+      if (planSel) planSel.value = "Starter";
+      const bundleSel = byId("req_hardware_bundle");
+      if (bundleSel) bundleSel.value = "No Printer";
+      updateRequestDerivedFields();
+      setLicenseRequestStatus("", "var(--muted)");
+    }
+
     async function loadLicenseBackends() {
       const sel = byId("license_backend");
       if (!sel) return;
@@ -2241,7 +2259,7 @@ function showSection(name) {
         setLicenseRequestStatus(msg, "var(--bad)");
         return;
       }
-      setLicenseRequestStatus("Request submitted. ID: " + (data.request_id || "") + ". Payment verification will use the Payer’s Phone Number entered in this request.", "var(--good)");
+      setLicenseRequestStatus("Request submitted. ID: " + (data.request_id || "") + ". Payment verification will use the Payer's Phone Number entered in this request.", "var(--good)");
       const notes = byId("req_notes");
       if (notes) notes.value = "";
       showPaymentInstructions({
@@ -2381,6 +2399,7 @@ function showSection(name) {
         await loadCurrentLicenseForRequest();
       });
       bind("license_request_btn", "click", submitLicenseRequest);
+      bind("license_request_clear", "click", clearLicenseRequestForm);
       bind("license_requests_refresh", "click", loadLicenseRequests);
       bind("copy_agent_code", "click", () => navigator.clipboard.writeText("20124624"));
       bind("copy_amount", "click", () => {

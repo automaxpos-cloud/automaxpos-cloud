@@ -446,6 +446,7 @@ router.get(
             <div>
               <label class="muted">Issue Type</label>
               <select id="manual_issue_type" style="width:100%;">
+                <option value="">Select type</option>
                 <option value="new_license">New License</option>
                 <option value="renewal">Renewal</option>
                 <option value="device_addon">Extra Device Add-On</option>
@@ -522,6 +523,7 @@ router.get(
           <div class="row" style="margin-top:10px;">
             <div class="spacer"></div>
             <button class="btn" id="manual_refresh">Refresh Lists</button>
+            <button class="btn" id="manual_clear">Clear</button>
             <button class="btn primary" id="manual_create">Create / Update</button>
           </div>
         </div>
@@ -1412,7 +1414,15 @@ let activeRequestId = null;
     }
 
     function updateManualDerived() {
-      const issueType = byId("manual_issue_type")?.value || "new_license";
+      const issueTypeRaw = byId("manual_issue_type")?.value || "";
+      if (!issueTypeRaw) {
+        byId("manual_base_limit").value = "";
+        byId("manual_total_limit").value = "";
+        byId("manual_change_reason").value = "";
+        byId("manual_plan").disabled = false;
+        return;
+      }
+      const issueType = issueTypeRaw;
       const plan = byId("manual_plan")?.value || "Starter";
       const base = manualBaseLimit(plan);
       const extra = Number(byId("manual_extra_devices")?.value || 0);
@@ -1421,6 +1431,24 @@ let activeRequestId = null;
       byId("manual_total_limit").value = total;
       byId("manual_change_reason").value = manualChangeReason(issueType);
       byId("manual_plan").disabled = issueType === "device_addon";
+    }
+
+    function clearManualForm() {
+      if (byId("manual_issue_type")) byId("manual_issue_type").value = "";
+      if (byId("manual_plan")) byId("manual_plan").value = "Starter";
+      byId("manual_base_limit").value = "";
+      byId("manual_extra_devices").value = 0;
+      byId("manual_total_limit").value = "";
+      byId("manual_issued_at").value = "";
+      byId("manual_expires").value = "";
+      byId("manual_status_select").value = "active";
+      byId("manual_prev_license").value = "";
+      byId("manual_license_version").value = "";
+      byId("manual_change_reason").value = "";
+      byId("manual_request_id").value = "";
+      byId("manual_hardware_bundle").value = "";
+      byId("manual_quoted_price").value = "";
+      updateManualDerived();
     }
 
     async function refreshAll() {
@@ -1815,6 +1843,7 @@ let activeRequestId = null;
           quoted_price: quotedPrice ? Number(quotedPrice) : null
         };
         if (!backendId) return setToast("Select a backend first.", "var(--warn)");
+        if (!issueType) return setToast("Select an issue type.", "var(--warn)");
         const res = await fetch("/api/admin/licenses/manual", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -1827,6 +1856,7 @@ let activeRequestId = null;
         setToast("License created/updated.", "var(--good)");
         await loadManualLicenses();
       });
+      byId("manual_clear").addEventListener("click", clearManualForm);
       byId("manual_issue_type").addEventListener("change", updateManualDerived);
       byId("manual_plan").addEventListener("change", updateManualDerived);
       byId("manual_extra_devices").addEventListener("input", updateManualDerived);
