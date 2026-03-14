@@ -393,11 +393,31 @@ router.get("/payments", adminJwt, async (req, res) => {
   try {
     const status = String(req.query.status || "").trim();
     const q = String(req.query.q || "").trim();
+    const range = String(req.query.range || "").trim();
     const startDate = String(req.query.start_date || "").trim();
     const endDate = String(req.query.end_date || "").trim();
 
     let startTs = null;
     let endTs = null;
+    const now = new Date();
+    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    if (range && range !== "custom" && !startDate && !endDate) {
+      if (range === "today") {
+        startTs = todayUtc.toISOString();
+        endTs = new Date(todayUtc.getTime() + 86400 * 1000).toISOString();
+      } else if (range === "yesterday") {
+        startTs = new Date(todayUtc.getTime() - 86400 * 1000).toISOString();
+        endTs = todayUtc.toISOString();
+      } else if (range === "last7") {
+        startTs = new Date(todayUtc.getTime() - 6 * 86400 * 1000).toISOString();
+        endTs = new Date(todayUtc.getTime() + 86400 * 1000).toISOString();
+      } else if (range === "month") {
+        const start = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth(), 1));
+        const end = new Date(Date.UTC(todayUtc.getUTCFullYear(), todayUtc.getUTCMonth() + 1, 1));
+        startTs = start.toISOString();
+        endTs = end.toISOString();
+      }
+    }
     if (startDate) {
       const d = new Date(startDate + "T00:00:00Z");
       if (!Number.isNaN(d.getTime())) startTs = d.toISOString();

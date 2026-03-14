@@ -1328,15 +1328,69 @@ let activeRequestId = null;
       }
     }
 
+    function setDateInput(id, value) {
+      const el = byId(id);
+      if (el) el.value = value || "";
+    }
+
+    function formatDateInput(d) {
+      const yyyy = d.getUTCFullYear();
+      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function applyPaymentsRange(preset) {
+      const fromEl = byId("payments_from");
+      const toEl = byId("payments_to");
+      if (!fromEl || !toEl) return;
+      if (preset === "custom") {
+        fromEl.disabled = false;
+        toEl.disabled = false;
+        return;
+      }
+      fromEl.disabled = true;
+      toEl.disabled = true;
+      const now = new Date();
+      const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      let start = null;
+      let end = null;
+      if (preset === "today") {
+        start = today;
+        end = new Date(today.getTime() + 86400 * 1000);
+      } else if (preset === "yesterday") {
+        start = new Date(today.getTime() - 86400 * 1000);
+        end = today;
+      } else if (preset === "last7") {
+        start = new Date(today.getTime() - 6 * 86400 * 1000);
+        end = new Date(today.getTime() + 86400 * 1000);
+      } else if (preset === "month") {
+        start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+        end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
+      }
+      setDateInput("payments_from", start ? formatDateInput(start) : "");
+      if (preset === "today") {
+        setDateInput("payments_to", formatDateInput(start));
+      } else if (preset === "yesterday") {
+        const y = new Date(end.getTime() - 86400 * 1000);
+        setDateInput("payments_to", formatDateInput(y));
+      } else {
+        const endMinus = new Date(end.getTime() - 86400 * 1000);
+        setDateInput("payments_to", formatDateInput(endMinus));
+      }
+    }
+
     async function loadPayments(silent) {
       byId("payments_status").textContent = "Loading...";
       const status = byId("payments_status_filter")?.value || "";
       const q = byId("payments_search")?.value.trim() || "";
       const start = getDateValue("payments_from");
       const end = getDateValue("payments_to");
+      const range = byId("payments_range")?.value || "today";
       const params = new URLSearchParams();
       if (status) params.set("status", status);
       if (q) params.set("q", q);
+      if (range) params.set("range", range);
       if (start) params.set("start_date", start);
       if (end) params.set("end_date", end);
       const url = "/api/admin/payments" + (params.toString() ? "?" + params.toString() : "");
@@ -1375,6 +1429,7 @@ let activeRequestId = null;
           "</td>";
         body.appendChild(tr);
       });
+      setRangeLabel(start, end, range);
     }
 
     function manualBaseLimit(plan) {
@@ -1921,6 +1976,10 @@ let activeRequestId = null;
       byId("businesses_refresh").addEventListener("click", loadBusinesses);
       byId("payments_refresh").addEventListener("click", loadPayments);
       byId("payments_status_filter").addEventListener("change", loadPayments);
+      byId("payments_range").addEventListener("change", () => {
+        applyPaymentsRange(byId("payments_range")?.value || "today");
+        loadPayments();
+      });
       byId("payments_search").addEventListener("input", () => {
         clearTimeout(window.__payTimer);
         window.__payTimer = setTimeout(loadPayments, 300);
@@ -2025,6 +2084,7 @@ let activeRequestId = null;
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           toggleLogin(true, data.admin || {});
+          applyPaymentsRange(byId("payments_range")?.value || "today");
           await refreshAll();
           await loadBusinesses();
           await loadBackendsCatalog();
