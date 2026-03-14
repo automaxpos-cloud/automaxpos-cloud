@@ -83,6 +83,10 @@ function selectCol(cols, name, alias) {
   return `NULL${alias ? " AS " + alias : ""}`;
 }
 
+function selectColExpr(cols, name) {
+  return cols.has(name) ? `bl.${name}` : "NULL";
+}
+
 async function getCloudUsersColumns() {
   const res = await pool.query(
     `SELECT column_name
@@ -944,8 +948,8 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
         bl.backend_id,
         bl.business_id,
         bl.branch_id,
-        COALESCE(ib.full_name, ${selectCol(cols, "issued_by_name")}) AS issued_by_display,
-        COALESCE(ib.email, ${selectCol(cols, "issued_by_email")}) AS issued_by_email_display,
+        COALESCE(ib.full_name, ${selectColExpr(cols, "issued_by_name")}) AS issued_by_display,
+        COALESCE(ib.email, ${selectColExpr(cols, "issued_by_email")}) AS issued_by_email_display,
         ab.full_name AS approved_by_display,
         rb.full_name AS revoked_by_display,
         re.full_name AS reissued_by_display,
@@ -958,10 +962,10 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
       LEFT JOIN businesses b ON b.id = bl.business_id
       LEFT JOIN branches br ON br.id = bl.branch_id
       LEFT JOIN backend_devices bd ON bd.id = bl.backend_id
-      LEFT JOIN cloud_users ib ON ib.id = ${selectCol(cols, "issued_by_admin_id")}
-      LEFT JOIN cloud_users ab ON ab.id = ${selectCol(cols, "approved_by_admin_id")}
-      LEFT JOIN cloud_users rb ON rb.id = ${selectCol(cols, "revoked_by_admin_id")}
-      LEFT JOIN cloud_users re ON re.id = ${selectCol(cols, "reissued_by_admin_id")}
+      LEFT JOIN cloud_users ib ON ib.id = ${selectColExpr(cols, "issued_by_admin_id")}
+      LEFT JOIN cloud_users ab ON ab.id = ${selectColExpr(cols, "approved_by_admin_id")}
+      LEFT JOIN cloud_users rb ON rb.id = ${selectColExpr(cols, "revoked_by_admin_id")}
+      LEFT JOIN cloud_users re ON re.id = ${selectColExpr(cols, "reissued_by_admin_id")}
       ORDER BY bl.updated_at DESC
       LIMIT 500
       `
