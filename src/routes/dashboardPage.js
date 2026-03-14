@@ -204,6 +204,23 @@ router.get("/", (req, res) => {
         color: #fff;
         border-color: var(--accent);
       }
+
+      #biz-nav .nav-btn {
+        background: #1f2a40 !important;
+        color: #fff !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 8px;
+        transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+        cursor: pointer;
+      }
+      #biz-nav .nav-btn:hover {
+        border-color: var(--accent) !important;
+      }
+      #biz-nav .nav-btn.active {
+        background: var(--accent) !important;
+        color: #fff !important;
+        border-color: var(--accent) !important;
+      }
 </style>
 </head>
 <body>
