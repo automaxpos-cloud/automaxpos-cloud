@@ -901,11 +901,11 @@ router.get("/payments", adminJwt, async (req, res) => {
 function sanitizePaymentBody(raw) {
   if (!raw) return "";
   return String(raw)
-    .replace(/\\bBal(?:ance)?\\s*[:\\-]?\\s*[A-Z]{0,3}\\s*[0-9.,]+\\b/gi, "")
-    .replace(/\\bComm(?:ission)?\\s*[:\\-]?\\s*[A-Z]{0,3}\\s*[0-9.,]+\\b/gi, "")
-    .replace(/\\s{2,}/g, " ")
-    .replace(/\\s+\\.\\s+/g, ". ")
-    .replace(/\\s+\\./g, ".")
+    .replace(/\bBal(?:ance)?\s*[:\-]?\s*[A-Z]{0,3}\s*[0-9.,]+\b/gi, "")
+    .replace(/\bComm(?:ission)?\s*[:\-]?\s*[A-Z]{0,3}\s*[0-9.,]+\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+\.\s+/g, ". ")
+    .replace(/\s+\./g, ".")
     .trim();
 }
 
