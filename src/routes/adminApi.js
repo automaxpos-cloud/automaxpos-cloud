@@ -898,6 +898,17 @@ router.get("/payments", adminJwt, async (req, res) => {
     return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load payments" });
   }
 });
+function sanitizePaymentBody(raw) {
+  if (!raw) return "";
+  return String(raw)
+    .replace(/\\bBal(?:ance)?\\s*[:\\-]?\\s*[A-Z]{0,3}\\s*[0-9.,]+\\b/gi, "")
+    .replace(/\\bComm(?:ission)?\\s*[:\\-]?\\s*[A-Z]{0,3}\\s*[0-9.,]+\\b/gi, "")
+    .replace(/\\s{2,}/g, " ")
+    .replace(/\\s+\\.\\s+/g, ". ")
+    .replace(/\\s+\\./g, ".")
+    .trim();
+}
+
 router.get("/payments/:id", adminJwt, async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();
@@ -910,12 +921,7 @@ router.get("/payments/:id", adminJwt, async (req, res) => {
     const row = rows.rows[0];
     const isSuper = String(req.admin?.role || "").toUpperCase() === "SUPER_ADMIN";
     const rawBody = String(row.raw_body || "");
-    const sanitized = rawBody
-      .replace(/\\bBal(?:ance)?\\s+[A-Z]{0,3}\\s*[0-9.,]+\\b/gi, "")
-      .replace(/\\bComm(?:ission)?\\s+[A-Z]{0,3}\\s*[0-9.,]+\\b/gi, "")
-      .replace(/\\s{2,}/g, " ")
-      .replace(/\\s+\\.\\s+/g, ". ")
-      .trim();
+    const sanitized = sanitizePaymentBody(rawBody);
     const safeRow = {
       ...row,
       sanitized_body: sanitized || null,
