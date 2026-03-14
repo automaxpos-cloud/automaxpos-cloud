@@ -128,6 +128,41 @@ async function registerBackend(req, res) {
     maskId(device_fingerprint), maskId(clientBackendId || "-"), maskId(backendId), action, business_id, branch_id, tokenPrefix
   );
 
+  try {
+    const demoDays = Number(process.env.DEMO_DAYS || 14);
+    const machineId = String(device_fingerprint || "").trim();
+    if (machineId) {
+      await query(
+        `
+        INSERT INTO backend_demo_records (
+          machine_id,
+          backend_id,
+          business_id,
+          first_demo_started_at,
+          demo_expires_at,
+          last_seen_at,
+          install_count,
+          status,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,$2,$3,NOW(),NOW() + ($4 || ' days')::interval,NOW(),1,'ACTIVE',NOW(),NOW()
+        )
+        ON CONFLICT (machine_id) DO UPDATE SET
+          backend_id = EXCLUDED.backend_id,
+          business_id = EXCLUDED.business_id,
+          last_seen_at = NOW(),
+          install_count = backend_demo_records.install_count + 1,
+          updated_at = NOW()
+        `,
+        [machineId, backendId, business_id, String(demoDays)]
+      );
+    }
+  } catch (e) {
+    console.warn("[DEMO_TRACK] failed:", e?.message || e);
+  }
+
   return res.json({
     ok: true,
     backend_id: backendId,

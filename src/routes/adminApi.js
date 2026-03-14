@@ -655,6 +655,74 @@ router.get("/licenses/:id/json", adminJwt, async (req, res) => {
   }
 });
 
+router.get("/activations", adminJwt, async (_req, res) => {
+  try {
+    const exists = await pool.query(`SELECT to_regclass('public.license_activations') AS t`);
+    if (!exists.rows[0]?.t) {
+      return res.json({ ok: true, rows: [], missing: "license_activations" });
+    }
+    const rows = await pool.query(
+      `
+      SELECT
+        la.id,
+        la.license_id,
+        la.machine_id,
+        la.status,
+        la.activated_at,
+        la.last_seen_at,
+        la.reissue_count,
+        la.replaced_by_license_id,
+        la.replaced_from_license_id,
+        la.backend_id,
+        la.business_id,
+        bd.backend_name,
+        b.name AS business_name
+      FROM license_activations la
+      LEFT JOIN backend_devices bd ON bd.id = la.backend_id
+      LEFT JOIN businesses b ON b.id = la.business_id
+      ORDER BY la.activated_at DESC NULLS LAST
+      LIMIT 200
+      `
+    );
+    return res.json({ ok: true, rows: rows.rows || [] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load activations" });
+  }
+});
+
+router.get("/demos", adminJwt, async (_req, res) => {
+  try {
+    const exists = await pool.query(`SELECT to_regclass('public.backend_demo_records') AS t`);
+    if (!exists.rows[0]?.t) {
+      return res.json({ ok: true, rows: [], missing: "backend_demo_records" });
+    }
+    const rows = await pool.query(
+      `
+      SELECT
+        dr.id,
+        dr.machine_id,
+        dr.backend_id,
+        dr.business_id,
+        dr.first_demo_started_at,
+        dr.demo_expires_at,
+        dr.last_seen_at,
+        dr.install_count,
+        dr.status,
+        bd.backend_name,
+        b.name AS business_name
+      FROM backend_demo_records dr
+      LEFT JOIN backend_devices bd ON bd.id = dr.backend_id
+      LEFT JOIN businesses b ON b.id = dr.business_id
+      ORDER BY dr.first_demo_started_at DESC NULLS LAST
+      LIMIT 200
+      `
+    );
+    return res.json({ ok: true, rows: rows.rows || [] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load demo records" });
+  }
+});
+
 router.post(
   "/licenses/manual",
   adminJwt,

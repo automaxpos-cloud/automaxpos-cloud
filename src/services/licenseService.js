@@ -127,18 +127,23 @@ function buildLicensePayload({
   changeReason,
   licenseStatus
 }) {
+  const keyId = process.env.LICENSE_KEY_ID || "jpmax-license-key-2026-01";
   return {
     schema_version: 1,
     license_id: licenseId,
+    key_id: keyId,
     request_id: requestId || null,
     issued_by: "JP_MAX_ADMIN",
     issued_at: issuedAtIso,
     expires_at: expiresAtIso,
     grace_ends_at: graceEndsAtIso,
+    business_id: businessId || null,
     business: {
       business_id: businessId || null,
       business_name: businessName || null
     },
+    backend_id: backendId || null,
+    machine_id: machineId || null,
     backend: {
       backend_id: backendId || null,
       machine_id: machineId || null,
@@ -151,6 +156,7 @@ function buildLicensePayload({
       used_devices: 0,
       request_type: changeReason || "new_license"
     },
+    device_limit: totalDeviceLimit,
     features: features || {
       cloud_sync: true,
       inventory: true,

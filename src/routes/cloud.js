@@ -12,6 +12,7 @@ const authUser = require("../middleware/authUser");
 const inventorySnapshotController = require("../controllers/inventorySnapshotController");
 const registerActivityController = require("../controllers/registerActivityController");
 const licenseSyncController = require("../controllers/licenseSyncController");
+const { rateLimit } = require("../middleware/rateLimiter");
 
 const router = express.Router();
 
@@ -83,15 +84,15 @@ function adminOrLocalSetup(req, res, next) {
 // Registration (admin auth or local setup)
 router.post("/businesses", adminJwt, registrationController.createBusiness);
 router.post("/branches", adminJwt, registrationController.createBranch);
-router.post("/backends/register", adminOrLocalSetup, registrationController.registerBackend);
+router.post("/backends/register", rateLimit({ windowMs: 60_000, max: 10 }), adminOrLocalSetup, registrationController.registerBackend);
 router.post("/backends/rotate-token", auth, registrationController.rotateBackendToken);
 
-router.post("/backend/heartbeat", auth, backendController.heartbeat);
-router.get("/license/current", auth, licenseController.current);
+router.post("/backend/heartbeat", rateLimit({ windowMs: 60_000, max: 300 }), auth, backendController.heartbeat);
+router.get("/license/current", rateLimit({ windowMs: 60_000, max: 60 }), auth, licenseController.current);
 router.post("/licenses/request", authBackendOrUser, licenseController.request);
 router.get("/licenses/requests", authBackendOrUser, licenseController.requests);
-router.get("/licenses/status", auth, licenseController.status);
-router.get("/licenses/pull", auth, licenseController.pull);
+router.get("/licenses/status", rateLimit({ windowMs: 60_000, max: 60 }), auth, licenseController.status);
+router.get("/licenses/pull", rateLimit({ windowMs: 60_000, max: 30 }), auth, licenseController.pull);
 router.post("/licenses/activate", auth, licenseController.activate);
 router.post("/licenses/sync", auth, licenseSyncController.syncBackendLicense);
 router.post("/sales/sync", auth, salesController.syncSales);

@@ -250,6 +250,8 @@ router.get(
         <a href="/jpmax-admin/automax-pos/requests" id="nav-requests">License Requests</a>
         <a href="/jpmax-admin/automax-pos/issued" id="nav-issued">Issued Licenses</a>
         <a href="/jpmax-admin/automax-pos/licenses" id="nav-manual">Manual License Manager</a>
+        <a href="/jpmax-admin/automax-pos/activations" id="nav-activations">License Activations</a>
+        <a href="/jpmax-admin/automax-pos/demos" id="nav-demos">Demo Usage</a>
         <a href="/jpmax-admin/automax-pos/backends" id="nav-backends">Backends</a>
         <a href="/jpmax-admin/automax-pos/businesses" id="nav-businesses">Business Owners</a>
         <a href="/jpmax-admin/automax-pos/sync" id="nav-sync">Sync Monitoring</a>
@@ -549,6 +551,54 @@ router.get(
         </table>
       </section>
 
+      <section id="section-activations" class="hidden">
+        <h1>License Activations</h1>
+        <div class="toolbar">
+          <button class="btn" id="activations_refresh">Refresh</button>
+          <div class="status-line" id="activations_status"></div>
+        </div>
+        <div id="activations_empty" class="empty hidden">No activation records found.</div>
+        <table>
+          <thead>
+            <tr>
+              <th>License ID</th>
+              <th>Business</th>
+              <th>Backend</th>
+              <th>Machine ID</th>
+              <th>Status</th>
+              <th>Activated At</th>
+              <th>Last Seen</th>
+              <th>Reissue Count</th>
+            </tr>
+          </thead>
+          <tbody id="activations_body"></tbody>
+        </table>
+      </section>
+
+      <section id="section-demos" class="hidden">
+        <h1>Demo Usage</h1>
+        <div class="toolbar">
+          <button class="btn" id="demos_refresh">Refresh</button>
+          <div class="status-line" id="demos_status"></div>
+        </div>
+        <div id="demos_empty" class="empty hidden">No demo records found.</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Machine ID</th>
+              <th>Business</th>
+              <th>Backend</th>
+              <th>Status</th>
+              <th>First Demo</th>
+              <th>Demo Expires</th>
+              <th>Last Seen</th>
+              <th>Install Count</th>
+            </tr>
+          </thead>
+          <tbody id="demos_body"></tbody>
+        </table>
+      </section>
+
       <section id="section-backends" class="hidden">
         <h1>Backends</h1>
         <div class="toolbar">
@@ -771,6 +821,8 @@ let activeRequestId = null;
         "/jpmax-admin/automax-pos/requests": "nav-requests",
         "/jpmax-admin/automax-pos/issued": "nav-issued",
         "/jpmax-admin/automax-pos/licenses": "nav-manual",
+        "/jpmax-admin/automax-pos/activations": "nav-activations",
+        "/jpmax-admin/automax-pos/demos": "nav-demos",
         "/jpmax-admin/automax-pos/backends": "nav-backends",
         "/jpmax-admin/automax-pos/businesses": "nav-businesses",
         "/jpmax-admin/automax-pos/sync": "nav-sync",
@@ -783,13 +835,15 @@ let activeRequestId = null;
 
     function showSection() {
       const path = window.location.pathname;
-      const sections = ["portal", "overview", "payments", "requests", "issued", "manual", "backends", "businesses", "sync", "settings"];
+      const sections = ["portal", "overview", "payments", "requests", "issued", "manual", "activations", "demos", "backends", "businesses", "sync", "settings"];
       sections.forEach((s) => byId("section-" + s)?.classList.add("hidden"));
       if (path.endsWith("/automax-pos")) return byId("section-overview")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/payments")) return byId("section-payments")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/requests")) return byId("section-requests")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/issued")) return byId("section-issued")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/licenses")) return byId("section-manual")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/activations")) return byId("section-activations")?.classList.remove("hidden");
+      if (path.endsWith("/automax-pos/demos")) return byId("section-demos")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/backends")) return byId("section-backends")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/businesses")) return byId("section-businesses")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/sync")) return byId("section-sync")?.classList.remove("hidden");
@@ -1097,6 +1151,64 @@ let activeRequestId = null;
           "<button class='btn' data-action='disable' data-id='" + r.backend_id + "'>Disable</button> " +
           "<button class='btn' data-action='flag' data-id='" + r.backend_id + "'>Flag</button>" +
           "</td>";
+        body.appendChild(tr);
+      });
+    }
+
+    async function loadActivations(silent) {
+      byId("activations_status").textContent = "Loading...";
+      const res = await fetch("/api/admin/activations", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.message || data?.error || "Failed to load activations.";
+        byId("activations_status").textContent = msg;
+        if (!silent) return setToast(msg, "var(--bad)");
+        return;
+      }
+      const body = byId("activations_body");
+      body.innerHTML = "";
+      byId("activations_status").textContent = (data.rows || []).length + " rows";
+      byId("activations_empty").classList.toggle("hidden", (data.rows || []).length > 0);
+      (data.rows || []).forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.license_id || "-") + "</td>" +
+          "<td>" + (r.business_name || "-") + "</td>" +
+          "<td>" + (r.backend_name || r.backend_id || "-") + "</td>" +
+          "<td>" + (r.machine_id ? r.machine_id.slice(0, 10) + "..." : "-") + "</td>" +
+          "<td>" + statusBadge(r.status) + "</td>" +
+          "<td>" + (r.activated_at ? new Date(r.activated_at).toLocaleString() : "-") + "</td>" +
+          "<td>" + (r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : "-") + "</td>" +
+          "<td>" + (r.reissue_count ?? 0) + "</td>";
+        body.appendChild(tr);
+      });
+    }
+
+    async function loadDemos(silent) {
+      byId("demos_status").textContent = "Loading...";
+      const res = await fetch("/api/admin/demos", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.message || data?.error || "Failed to load demo records.";
+        byId("demos_status").textContent = msg;
+        if (!silent) return setToast(msg, "var(--bad)");
+        return;
+      }
+      const body = byId("demos_body");
+      body.innerHTML = "";
+      byId("demos_status").textContent = (data.rows || []).length + " rows";
+      byId("demos_empty").classList.toggle("hidden", (data.rows || []).length > 0);
+      (data.rows || []).forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.machine_id ? r.machine_id.slice(0, 10) + "..." : "-") + "</td>" +
+          "<td>" + (r.business_name || "-") + "</td>" +
+          "<td>" + (r.backend_name || r.backend_id || "-") + "</td>" +
+          "<td>" + statusBadge(r.status) + "</td>" +
+          "<td>" + (r.first_demo_started_at ? new Date(r.first_demo_started_at).toLocaleString() : "-") + "</td>" +
+          "<td>" + (r.demo_expires_at ? new Date(r.demo_expires_at).toLocaleString() : "-") + "</td>" +
+          "<td>" + (r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : "-") + "</td>" +
+          "<td>" + (r.install_count ?? 0) + "</td>";
         body.appendChild(tr);
       });
     }
@@ -1461,6 +1573,8 @@ let activeRequestId = null;
         loadPayments(true),
         loadRequests(true),
         loadLicenses(true),
+        loadActivations(true),
+        loadDemos(true),
         loadBackends(true),
         loadBusinesses(true),
         loadBackendsCatalog(true),
@@ -1801,6 +1915,8 @@ let activeRequestId = null;
       });
       byId("requests_refresh").addEventListener("click", loadRequests);
       byId("licenses_refresh").addEventListener("click", loadLicenses);
+      byId("activations_refresh").addEventListener("click", loadActivations);
+      byId("demos_refresh").addEventListener("click", loadDemos);
       byId("backends_refresh").addEventListener("click", loadBackends);
       byId("businesses_refresh").addEventListener("click", loadBusinesses);
       byId("payments_refresh").addEventListener("click", loadPayments);

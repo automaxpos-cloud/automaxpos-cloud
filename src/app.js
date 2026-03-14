@@ -20,6 +20,7 @@ const setupWizard = require("./routes/setupWizard");
 const adminPage = require("./routes/adminPage");
 const publicApi = require("./routes/publicApi");
 const paymentIngest = require("./routes/paymentIngest");
+const { rateLimit } = require("./middleware/rateLimiter");
 
 const app = express();
 
@@ -47,7 +48,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/health", healthRoutes);
-app.use("/api/cloud/auth", authRoutes);
+app.use("/api/cloud/auth", rateLimit({ windowMs: 60_000, max: 30 }), authRoutes);
 app.use("/api/cloud", cloudRoutes);
 app.use("/api/cloud/dashboard", cloudDashboardApi);
 app.use("/api/cloud/reports", cloudReportsApi);
@@ -55,7 +56,7 @@ app.use("/api/cloud/inventory", cloudInventoryApi);
 app.use("/api/cloud/users", cloudUsersApi);
 app.use("/api/cloud/licenses", licenseAdminApi);
 app.use("/api/admin", adminApi);
-app.use("/api/payments", paymentIngest);
+app.use("/api/payments", rateLimit({ windowMs: 60_000, max: 30 }), paymentIngest);
 app.use("/api/public", publicApi);
 if (NODE_ENV !== "production") {
   app.use("/api/cloud/setup", setupWizard);

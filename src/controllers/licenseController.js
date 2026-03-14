@@ -381,6 +381,9 @@ async function status(req, res) {
       ok: true,
       has_license: hasLicense,
       status: statusLabel,
+      activation_status: activationStatus,
+      demo_status: demoStatus,
+      demo_expires_at: demoExpiresAt,
       license_id: lic?.license_id || null,
       plan: lic ? licenseService.normalizePlan(lic.plan, lic.device_limit) : (lastReq?.requested_plan || null),
       device_limit: lic?.device_limit ?? lastReq?.device_count ?? null,
@@ -454,8 +457,87 @@ async function activate(req, res) {
   const backend = req.backend || {};
   try {
     const lic = await licenseService.getBackendLicense(backend.id);
+    let activationStatus = null;
+    let demoStatus = null;
+    let demoExpiresAt = null;
+    try {
+      const hasActs = await pool.query(`SELECT to_regclass('public.license_activations') AS t`);
+      if (hasActs.rows[0]?.t && lic?.license_id) {
+        const act = await pool.query(
+          `SELECT status FROM license_activations WHERE license_id=$1 ORDER BY activated_at DESC LIMIT 1`,
+          [lic.license_id]
+        );
+        activationStatus = act.rows[0]?.status || null;
+      }
+    } catch (_) {}
+    try {
+      const hasDemo = await pool.query(`SELECT to_regclass('public.backend_demo_records') AS t`);
+      if (hasDemo.rows[0]?.t && backend.machine_id) {
+        const demo = await pool.query(
+          `SELECT status, demo_expires_at FROM backend_demo_records WHERE machine_id=$1 LIMIT 1`,
+          [backend.machine_id]
+        );
+        demoStatus = demo.rows[0]?.status || null;
+        demoExpiresAt = demo.rows[0]?.demo_expires_at ? toEpochSeconds(demo.rows[0].demo_expires_at) : null;
+      }
+    } catch (_) {}
     if (!lic) {
       return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "No license found" });
+    }
+    const tableCheck = await pool.query(`SELECT to_regclass('public.license_activations') AS t`);
+    const hasActivations = !!tableCheck.rows[0]?.t;
+    const machineId = String(backend.machine_id || lic.machine_id || "").trim();
+    if (hasActivations && machineId) {
+      const existing = await pool.query(
+        `SELECT id, machine_id, status
+         FROM license_activations
+         WHERE license_id = $1
+         ORDER BY activated_at DESC
+         LIMIT 1`,
+        [lic.license_id]
+      );
+      if (existing.rows.length) {
+        const bound = String(existing.rows[0].machine_id || "").trim();
+        if (bound && bound !== machineId) {
+          await logAudit({
+            adminUser: `backend:${backend.id}`,
+            action: "LICENSE_ACTIVATION_BLOCKED",
+            backendId: backend.id,
+            businessId: backend.business_id,
+            licenseId: lic.license_id,
+            oldValue: { bound_machine_id: bound },
+            newValue: { attempted_machine_id: machineId }
+          });
+          return res.status(403).json({
+            ok: false,
+            error: "LICENSE_BOUND_OTHER_MACHINE",
+            message: "License is already bound to another machine"
+          });
+        }
+        await pool.query(
+          `UPDATE license_activations
+           SET last_seen_at = NOW(),
+               status = 'ACTIVE',
+               updated_at = NOW()
+           WHERE id = $1`,
+          [existing.rows[0].id]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO license_activations (
+             license_id,
+             backend_id,
+             business_id,
+             machine_id,
+             status,
+             activated_at,
+             last_seen_at,
+             created_at,
+             updated_at
+           ) VALUES ($1,$2,$3,$4,'ACTIVE',NOW(),NOW(),NOW(),NOW())`,
+          [lic.license_id, backend.id, backend.business_id, machineId]
+        );
+      }
     }
     await logAudit({
       adminUser: `backend:${backend.id}`,
