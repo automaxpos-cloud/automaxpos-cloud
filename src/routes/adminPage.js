@@ -1232,7 +1232,7 @@ let activeRequestId = null;
       const res = await fetch("/api/admin/licenses", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = data?.message || data?.error || "Failed to load licenses.";
+        const msg = res.status === 401 ? "Unauthorized" : (data?.message || data?.error || "Failed to load licenses.");
         byId("licenses_status").textContent = msg;
         const path = window.location.pathname;
         const onLicensesPage = path.endsWith("/automax-pos/issued") || path.endsWith("/automax-pos/licenses");
