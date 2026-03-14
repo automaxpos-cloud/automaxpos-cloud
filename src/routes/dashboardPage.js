@@ -678,7 +678,7 @@ router.get("/", (req, res) => {
           <d          <div style="grid-column:1/-1;">
             <div class="payer-split" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
               <div>
-                <label class="muted">Payer?s Phone Number</label>
+                <label class="muted">Payer Phone Number</label>
                 <input id="req_payer_phone" type="text" placeholder="Airtel Money payment phone" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
                 <div class="muted" style="font-size:12px;margin-top:4px;">
                   Enter the phone number that will be used to make the Airtel Money payment. This number is used for automatic payment verification.
@@ -704,6 +704,7 @@ router.get("/", (req, res) => {
           </div>
           <div style="display:flex;gap:10px;align-items:center;grid-column:1/-1;">
             <button class="btn" id="license_request_btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--accent);color:#fff;">Send License Request</button>
+            <button class="btn" id="license_request_clear" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Clear</button>
             <div id="license_request_status" class="muted"></div>
           </div>
         </div>
