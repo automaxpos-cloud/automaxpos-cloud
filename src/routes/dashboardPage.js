@@ -188,7 +188,10 @@ router.get("/", (req, res) => {
       border-radius: 12px;
       background: rgba(17,26,43,0.4);
     }
-  </style>
+    @media (max-width: 900px) {
+    .payer-split { grid-template-columns: 1fr !important; }
+  }
+</style>
 </head>
 <body>
   <header>
@@ -642,22 +645,28 @@ router.get("/", (req, res) => {
             <label class="muted">Estimated Amount</label>
             <input id="req_amount_expected" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
-          <div>
-            <label class="muted">Payer’s Phone Number</label>
-            <input id="req_payer_phone" type="text" placeholder="Airtel Money payment phone" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
-            <div class="muted" style="font-size:12px;margin-top:4px;">
-              Enter the phone number that will be used to make the Airtel Money payment. This number is used for automatic payment verification.
+          <d          <div style="grid-column:1/-1;">
+            <div class="payer-split" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;">
+              <div>
+                <label class="muted">Payer?s Phone Number</label>
+                <input id="req_payer_phone" type="text" placeholder="Airtel Money payment phone" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+                <div class="muted" style="font-size:12px;margin-top:4px;">
+                  Enter the phone number that will be used to make the Airtel Money payment. This number is used for automatic payment verification.
+                </div>
+                <div class="muted" style="font-size:12px;margin-top:2px;">
+                  If the contact phone and payment phone are the same, enter the same number here.
+                </div>
+              </div>
+              <div style="padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel);">
+                <div style="font-weight:600;margin-bottom:4px;">Airtel Money Payment Details</div>
+                <div class="muted" style="margin-bottom:6px;">Pay through Airtel Money using Get Cash</div>
+                <div class="muted">Agent Code: <strong>20124624</strong></div>
+                <div class="muted">Name: <strong>James Phiri</strong></div>
+                <div class="muted" style="margin-top:6px;font-size:12px;">Use the same phone number entered above for easier payment verification.</div>
+              </div>
             </div>
-            <div class="muted" style="font-size:12px;margin-top:2px;">
-              If the contact phone and payment phone are the same, enter the same number here.
-            </div>
-            <div style="margin-top:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel);">
-              <div style="font-weight:600;margin-bottom:4px;">Airtel Money Payment Details</div>
-              <div class="muted" style="margin-bottom:6px;">Pay through Airtel Money using Get Cash</div>
-              <div class="muted">Agent Code: <strong>20124624</strong></div>
-              <div class="muted">Name: <strong>James Phiri</strong></div>
-              <div class="muted" style="margin-top:6px;font-size:12px;">Use the same phone number entered above for easier payment verification.</div>
-            </div>
+          </div>
+
           </div>
           <div style="grid-column:1/-1;">
             <label class="muted">Notes</label>
