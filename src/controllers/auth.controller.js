@@ -13,8 +13,8 @@ async function getCloudUserColumns() {
   return new Set(res.rows.map((r) => r.column_name));
 }
 
-function selectUserCol(cols, col, alias) {
-  return cols.has(col) ? `${col} AS ${alias}` : `NULL AS ${alias}`;
+function selectUserCol(cols, col, alias, fallback = "NULL") {
+  return cols.has(col) ? `${col} AS ${alias}` : `${fallback} AS ${alias}`;
 }
 
 exports.login = async (req, res) => {
@@ -72,6 +72,13 @@ exports.login = async (req, res) => {
         code: "USER_TABLE_MISSING"
       });
     }
+    if (!cols.has("password_hash") || !cols.has("role")) {
+      return res.status(500).json({
+        ok: false,
+        message: "Admin user schema missing required fields",
+        code: "USER_SCHEMA_INVALID"
+      });
+    }
 
     let where = null;
     if (cols.has("username") && cols.has("email")) {
@@ -98,7 +105,7 @@ exports.login = async (req, res) => {
         role,
         ${selectUserCol(cols, "business_id", "business_id")},
         ${selectUserCol(cols, "branch_id", "branch_id")},
-        ${selectUserCol(cols, "is_active", "is_active")}
+        ${selectUserCol(cols, "is_active", "is_active", "TRUE")}
       FROM cloud_users
       WHERE ${where}
       LIMIT 1
@@ -151,7 +158,7 @@ exports.login = async (req, res) => {
     console.error("CLOUD USER LOGIN ERROR:", err);
     return res.status(500).json({
       ok: false,
-      message: "Server error",
+      message: err?.message ? `Login failed: ${err.message}` : "Server error",
       code: "SERVER_ERROR"
     });
   }
