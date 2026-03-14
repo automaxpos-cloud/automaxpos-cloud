@@ -2217,11 +2217,14 @@ router.get("/", (req, res) => {
         restartStatusPolling();
         await loadLicenseBackends();
       });
-      bind("filter_range", "change", () => {
+      bind("filter_range", "change", async () => {
         updateRangeInputs();
         saveDashboardState();
         lastSeenRevision = null;
         restartStatusPolling();
+        await refreshAll();
+        updateFilterContext();
+        await loadLicenseBackends();
       });
       bind("filter_branch", "change", async () => {
         saveDashboardState();
