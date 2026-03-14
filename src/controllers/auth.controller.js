@@ -2,6 +2,21 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { pool } = require("../db/pool");
 
+async function getCloudUserColumns() {
+  const res = await pool.query(
+    `
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='cloud_users'
+    `
+  );
+  return new Set(res.rows.map((r) => r.column_name));
+}
+
+function selectUserCol(cols, col, alias) {
+  return cols.has(col) ? `${col} AS ${alias}` : `NULL AS ${alias}`;
+}
+
 exports.login = async (req, res) => {
   const { username, password, remember } = req.body || {};
   const loginId = String(username || "").trim().toLowerCase();
@@ -49,19 +64,60 @@ exports.login = async (req, res) => {
 
   // 2) cloud_users table
   try {
+    const cols = await getCloudUserColumns();
+    if (!cols.size) {
+      return res.status(500).json({
+        ok: false,
+        message: "Admin user storage not initialized",
+        code: "USER_TABLE_MISSING"
+      });
+    }
+
+    let where = null;
+    if (cols.has("username") && cols.has("email")) {
+      where = "LOWER(username) = $1 OR LOWER(email) = $1";
+    } else if (cols.has("username")) {
+      where = "LOWER(username) = $1";
+    } else if (cols.has("email")) {
+      where = "LOWER(email) = $1";
+    } else {
+      return res.status(500).json({
+        ok: false,
+        message: "Admin user schema missing login fields",
+        code: "USER_SCHEMA_INVALID"
+      });
+    }
+
     const result = await pool.query(
-      `SELECT id, username, email, password_hash, role, business_id, branch_id, is_active
-       FROM cloud_users
-       WHERE LOWER(username) = $1 OR LOWER(email) = $1
-       LIMIT 1`,
+      `
+      SELECT
+        id,
+        ${selectUserCol(cols, "username", "username")},
+        ${selectUserCol(cols, "email", "email")},
+        password_hash,
+        role,
+        ${selectUserCol(cols, "business_id", "business_id")},
+        ${selectUserCol(cols, "branch_id", "branch_id")},
+        ${selectUserCol(cols, "is_active", "is_active")}
+      FROM cloud_users
+      WHERE ${where}
+      LIMIT 1
+      `,
       [loginId]
     );
     const user = result.rows[0];
-    if (!user || !user.is_active) {
+    if (!user) {
       return res.status(401).json({
         ok: false,
         message: "Invalid credentials",
         code: "INVALID_CREDENTIALS"
+      });
+    }
+    if (user.is_active === false) {
+      return res.status(403).json({
+        ok: false,
+        message: "Account is inactive",
+        code: "ACCOUNT_INACTIVE"
       });
     }
     const ok = await bcrypt.compare(String(password), String(user.password_hash));
