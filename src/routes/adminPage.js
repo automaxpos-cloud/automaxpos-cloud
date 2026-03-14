@@ -1102,6 +1102,7 @@ let activeRequestId = null;
           "<td>" +
           "<button class='btn' data-action='view' data-id='" + r.id + "'>View</button> " +
           "<button class='btn' data-action='renew' data-id='" + r.id + "'>Renew</button> " +
+          "<button class='btn' data-action='replace' data-id='" + r.id + "'>Replace</button> " +
           "<button class='btn' data-action='revoke' data-id='" + r.id + "'>Revoke</button> " +
           "<button class='btn' data-action='download' data-id='" + r.id + "'>Download JSON</button>" +
           "</td>";
@@ -1784,6 +1785,15 @@ let activeRequestId = null;
         if (btn.dataset.action === "revoke") {
           await fetch("/api/admin/licenses/" + id + "/revoke", { method: "POST", headers: authHeaders() });
           setToast("License revoked.", "var(--warn)");
+          await loadLicenses();
+        }
+        if (btn.dataset.action === "replace") {
+          const res = await fetch("/api/admin/licenses/" + id + "/replace", { method: "POST", headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            return setToast(data?.message || data?.error || "Replace failed.", "var(--bad)");
+          }
+          setToast("License replaced.", "var(--good)");
           await loadLicenses();
         }
         if (btn.dataset.action === "renew") {

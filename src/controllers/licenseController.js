@@ -151,18 +151,24 @@ async function request(req, res) {
       }
     }
 
-    const businessName = String(body.business_name || "").trim();
-    const contactPerson = String(body.contact_person || "").trim();
-    const email = String(body.email || "").trim();
-    const phone = String(body.phone || "").trim();
-    const payerPhone = String(body.payer_phone || "").trim();
-    const requestedPlan = String(body.requested_plan || body.plan || "").trim();
+    const businessName = String(body.business_name || "").trim().slice(0, 120);
+    const contactPerson = String(body.contact_person || "").trim().slice(0, 120);
+    const email = String(body.email || "").trim().slice(0, 120);
+    const phone = String(body.phone || "").trim().slice(0, 32);
+    const payerPhone = String(body.payer_phone || "").trim().slice(0, 32);
+    const requestedPlan = String(body.requested_plan || body.plan || "").trim().slice(0, 32);
     const requestedTotal = Number.isFinite(Number(body.requested_total_device_limit))
       ? Number(body.requested_total_device_limit)
       : null;
     const deviceCount = Number.isFinite(Number(body.device_count))
       ? Number(body.device_count)
       : requestedTotal;
+
+    const requestType = String(body.request_type || "new_license").trim();
+    const allowedTypes = new Set(["new_license", "renewal", "device_addon", "upgrade"]);
+    if (!allowedTypes.has(requestType)) {
+      return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "Invalid request_type" });
+    }
 
     if (!businessName || !contactPerson || !email || !phone || !payerPhone || !requestedPlan || deviceCount == null) {
       return res.status(400).json({ ok: false, error: "MISSING_FIELDS", message: "Missing required contact or plan fields" });
@@ -177,7 +183,7 @@ async function request(req, res) {
       [backendId]
     );
     const machineId = String(body.machine_id || backendRow.rows[0]?.machine_id || "").trim();
-    const requestId = String(body.request_id || body.requestId || "").trim() || buildRequestId();
+    const requestId = String(body.request_id || body.requestId || "").trim().slice(0, 64) || buildRequestId();
 
     const existing = await pool.query(
       `SELECT id FROM license_requests WHERE request_id = $1 LIMIT 1`,
@@ -252,11 +258,11 @@ async function request(req, res) {
         "PENDING",
         businessName,
         contactPerson,
-        String(body.notes || ""),
+        String(body.notes || "").slice(0, 1000),
         requestedPlan,
         deviceCount,
         "cloud_pull",
-        String(body.request_type || "new_license"),
+        requestType,
         requestedTotal,
         Number.isFinite(Number(body.extra_device_count)) ? Number(body.extra_device_count) : null,
         String(body.current_plan || ""),
@@ -479,6 +485,9 @@ async function activate(req, res) {
         );
         demoStatus = demo.rows[0]?.status || null;
         demoExpiresAt = demo.rows[0]?.demo_expires_at ? toEpochSeconds(demo.rows[0].demo_expires_at) : null;
+        if (demoExpiresAt && demoExpiresAt * 1000 < Date.now()) {
+          demoStatus = "EXPIRED";
+        }
       }
     } catch (_) {}
     if (!lic) {

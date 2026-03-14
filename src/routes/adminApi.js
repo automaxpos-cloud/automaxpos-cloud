@@ -653,6 +653,64 @@ router.post(
   }
 );
 
+router.post(
+  "/licenses/:id/replace",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+    const row = await pool.query(
+      `SELECT backend_id, business_id, license_id, plan, device_limit, expires_at
+       FROM backend_licenses
+       WHERE id=$1`,
+      [id]
+    );
+    if (!row.rows.length) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    }
+    const lic = await licenseService.issueBackendLicense({
+      backendId: row.rows[0].backend_id,
+      issueType: "correction",
+      planName: row.rows[0].plan,
+      baseDeviceLimit: row.rows[0].device_limit,
+      expiresAtOverride: row.rows[0].expires_at
+    });
+    await pool.query(
+      `UPDATE backend_licenses
+       SET status='REPLACED', license_status='REPLACED', updated_at=NOW()
+       WHERE id=$1`,
+      [id]
+    );
+    try {
+      await pool.query(
+        `UPDATE license_activations
+         SET status='REPLACED',
+             replaced_by_license_id=$2,
+             updated_at=NOW()
+         WHERE license_id=$1`,
+        [row.rows[0].license_id, lic.license_id]
+      );
+    } catch (_) {}
+    await logAudit({
+      admin: req.admin,
+      action: "LICENSE_REPLACED",
+      backendId: lic.backend_id,
+      businessId: lic.business_id,
+      licenseId: lic.license_id,
+      oldValue: { replaced_from: row.rows[0].license_id },
+      newValue: { replaced_to: lic.license_id }
+    });
+    return res.json({ ok: true, license: lic });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("REPLACE LICENSE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+  }
+);
+
 router.get("/licenses/:id/json", adminJwt, async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();
