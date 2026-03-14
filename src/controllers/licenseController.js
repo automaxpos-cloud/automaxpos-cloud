@@ -39,6 +39,27 @@ async function logAudit({ adminUser, action, backendId, businessId, licenseId, o
   }
 }
 
+
+function buildLicenseResponse(lic) {
+  let payload = null;
+  try {
+    payload = lic?.payload_b64 ? JSON.parse(Buffer.from(lic.payload_b64, "base64").toString("utf8")) : null;
+  } catch (_) {
+    payload = null;
+  }
+  const signature = {
+    algorithm: "RSA-SHA256",
+    key_id: process.env.LICENSE_KEY_ID || "jpmax-license-key-2026-01",
+    value: lic?.sig_b64 || null
+  };
+  return {
+    payload: payload || null,
+    signature,
+    payload_b64: lic?.payload_b64 || null,
+    sig_b64: lic?.sig_b64 || null
+  };
+}
+
 function buildRequestId() {
   return `REQ-${crypto.randomBytes(6).toString("hex").toUpperCase()}`;
 }
@@ -55,10 +76,7 @@ async function current(req, res) {
     }
     return res.json({
       ok: true,
-      license: {
-        payload_b64: lic.payload_b64,
-        sig_b64: lic.sig_b64
-      },
+      license: buildLicenseResponse(lic),
       meta: {
         license_id: lic.license_id,
         plan: licenseService.normalizePlan(lic.plan, lic.device_limit),
@@ -402,10 +420,7 @@ async function pull(req, res) {
     });
     return res.json({
       ok: true,
-      license: {
-        payload_b64: lic.payload_b64,
-        sig_b64: lic.sig_b64
-      },
+      license: buildLicenseResponse(lic),
       meta: {
         license_id: lic.license_id,
         plan: licenseService.normalizePlan(lic.plan, lic.device_limit),

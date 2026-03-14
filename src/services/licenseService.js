@@ -94,12 +94,8 @@ function getPrivateKeyPem() {
   throw new Error("LICENSE_PRIVATE_KEY_MISSING");
 }
 
-function stableStringify(payload) {
-  return JSON.stringify(payload, Object.keys(payload).sort());
-}
-
 function signPayload(payload) {
-  const payloadJson = stableStringify(payload);
+  const payloadJson = JSON.stringify(payload);
   const payloadBytes = Buffer.from(payloadJson, "utf8");
   const sig = crypto.sign("RSA-SHA256", payloadBytes, getPrivateKeyPem());
   return {
@@ -111,16 +107,19 @@ function signPayload(payload) {
 
 function buildLicensePayload({
   licenseId,
+  requestId,
   businessId,
+  businessName,
   branchId,
   backendId,
   planName,
+  planCode,
   baseDeviceLimit,
   extraDeviceCount,
   totalDeviceLimit,
-  issuedAtSec,
-  expiresAtSec,
-  graceEndsAtSec,
+  issuedAtIso,
+  expiresAtIso,
+  graceEndsAtIso,
   features,
   machineId,
   licenseVersion,
@@ -129,24 +128,36 @@ function buildLicensePayload({
   licenseStatus
 }) {
   return {
+    schema_version: 1,
     license_id: licenseId,
-    product: "AutoMax POS",
-    business_id: businessId,
-    branch_id: branchId,
-    backend_id: backendId,
-    plan_name: planName,
-    base_device_limit: baseDeviceLimit,
-    extra_device_count: extraDeviceCount,
-    total_device_limit: totalDeviceLimit,
-    issued_at: issuedAtSec,
-    expiry_date: expiresAtSec,
-    grace_ends_at: graceEndsAtSec,
-    license_version: licenseVersion,
-    previous_license_id: previousLicenseId || null,
-    change_reason: changeReason,
-    license_status: licenseStatus || "active",
-    features: features || DEFAULT_FEATURES,
-    machine_id: machineId || null
+    request_id: requestId || null,
+    issued_by: "JP_MAX_ADMIN",
+    issued_at: issuedAtIso,
+    expires_at: expiresAtIso,
+    grace_ends_at: graceEndsAtIso,
+    business: {
+      business_id: businessId || null,
+      business_name: businessName || null
+    },
+    backend: {
+      backend_id: backendId || null,
+      machine_id: machineId || null,
+      branch_id: branchId || null
+    },
+    plan: {
+      plan_code: planCode || null,
+      plan_name: planName,
+      device_limit: totalDeviceLimit,
+      used_devices: 0,
+      request_type: changeReason || "new_license"
+    },
+    features: features || {
+      cloud_sync: true,
+      inventory: true,
+      reports: true,
+      returns: true,
+      multi_device: true
+    }
   };
 }
 
@@ -254,17 +265,26 @@ async function issueBackendLicense({
 
   const payload = buildLicensePayload({
     licenseId,
+    requestId: requestId || null,
     businessId: backend.business_id,
+    businessName,
     branchId: backend.branch_id,
     backendId: backend.id,
     planName: normalizePlan(nextPlanName, totalDeviceLimit),
+    planCode: normalizePlanKey(nextPlanName, totalDeviceLimit),
     baseDeviceLimit: nextBase,
     extraDeviceCount: nextExtra,
     totalDeviceLimit,
-    issuedAtSec,
-    expiresAtSec,
-    graceEndsAtSec,
-    features: DEFAULT_FEATURES,
+    issuedAtIso: new Date(issuedAtSec * 1000).toISOString(),
+    expiresAtIso: new Date(expiresAtSec * 1000).toISOString(),
+    graceEndsAtIso: new Date(graceEndsAtSec * 1000).toISOString(),
+    features: {
+      cloud_sync: true,
+      inventory: true,
+      reports: true,
+      returns: true,
+      multi_device: true
+    },
     machineId: backend.machine_id || null,
     licenseVersion,
     previousLicenseId,
@@ -376,6 +396,8 @@ async function issueBackendLicense({
     grace_ends_at: graceEndsAtSec,
     payload_b64: signed.payload_b64,
     sig_b64: signed.sig_b64,
+    payload,
+    signature: { algorithm: "RSA-SHA256", key_id: process.env.LICENSE_KEY_ID || "jpmax-license-key-2026-01", value: signed.sig_b64 },
     backend_id: backend.id,
     business_id: backend.business_id,
     branch_id: backend.branch_id,
