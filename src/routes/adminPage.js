@@ -212,13 +212,21 @@ router.get(
     .modal {
       position: fixed; inset: 0; background: rgba(0,0,0,0.6);
       display: none; align-items: center; justify-content: center;
+      z-index: 1000;
     }
     .modal .panel {
-      width: 420px; max-width: 92%;
+      width: 560px; max-width: 92%;
+      max-height: 88vh;
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 16px;
+      overflow: hidden;
+    }
+    .modal .panel .content {
+      max-height: calc(88vh - 90px);
+      overflow-y: auto;
+      padding-right: 6px;
     }
     .modal .panel h3 { margin-top: 0; }
     .row { display: flex; gap: 10px; }
@@ -713,7 +721,20 @@ router.get(
     const byId = (id) => document.getElementById(id);
     const tokenKey = "cloud_admin_token";
     const rememberKey = "vendor_admin_username";
-    let activeRequestId = null;
+    
+    function openModal(id) {
+      const modal = byId(id);
+      if (!modal) return;
+      modal.style.display = "flex";
+      document.body.style.overflow = "hidden";
+    }
+    function closeModal(id) {
+      const modal = byId(id);
+      if (!modal) return;
+      modal.style.display = "none";
+      document.body.style.overflow = "";
+    }
+let activeRequestId = null;
     let requestMap = new Map();
     let licenseMap = new Map();
     let backendMap = new Map();
@@ -837,7 +858,7 @@ router.get(
       const showActions = title === "License Request";
       byId("detail_approve").style.display = showActions ? "inline-flex" : "none";
       byId("detail_reject").style.display = showActions ? "inline-flex" : "none";
-      byId("detail_modal").style.display = "flex";
+      openModal("detail_modal");
     }
 
     async function doLogin() {
@@ -1426,7 +1447,7 @@ router.get(
         const id = btn.dataset.id;
         if (btn.dataset.action === "pay") {
           activeRequestId = id;
-          byId("payment_modal").style.display = "flex";
+          openModal("payment_modal");
         }
         if (btn.dataset.action === "issue") {
           const resp = await fetch("/api/admin/license-requests/" + id + "/mark-issued", {
@@ -1692,7 +1713,7 @@ router.get(
 
     function bindPaymentModal() {
       byId("pay_cancel").addEventListener("click", () => {
-        byId("payment_modal").style.display = "none";
+        closeModal("payment_modal");
       });
       byId("pay_confirm").addEventListener("click", async () => {
         if (!activeRequestId) return;
@@ -1712,7 +1733,7 @@ router.get(
         } else {
           setToast("Payment confirmed.", "var(--good)");
         }
-        byId("payment_modal").style.display = "none";
+        closeModal("payment_modal");
         await loadRequests();
       });
     }
@@ -1807,7 +1828,10 @@ router.get(
         window.__reqTimer = setTimeout(loadRequests, 300);
       });
       byId("detail_close").addEventListener("click", () => {
-        byId("detail_modal").style.display = "none";
+        closeModal("detail_modal");
+      });
+      byId("detail_modal").addEventListener("click", (e) => {
+        if (e.target && e.target.id === "detail_modal") closeModal("detail_modal");
       });
       byId("detail_approve").addEventListener("click", async () => {
         if (!activeRequestId) return;
@@ -1821,7 +1845,7 @@ router.get(
           return;
         }
         setToast("Request approved. License " + (data.license_id || "") + " issued.", "var(--good)");
-        byId("detail_modal").style.display = "none";
+        closeModal("detail_modal");
         await loadRequests();
         await loadLicenses();
       });
@@ -1832,7 +1856,7 @@ router.get(
           headers: authHeaders()
         });
         setToast("Request rejected.", "var(--warn)");
-        byId("detail_modal").style.display = "none";
+        closeModal("detail_modal");
         await loadRequests();
       });
 
