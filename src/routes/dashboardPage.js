@@ -28,7 +28,7 @@ router.get("/", (req, res) => {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AutoMax Cloud Dashboard</title>
+  <title>AutoMax POS Business Monitor</title>
   <script>
     (function () {
       const saved = localStorage.getItem("automax-theme") || "dark";
@@ -227,7 +227,7 @@ router.get("/", (req, res) => {
   <header>
     <div class="topbar">
       <div>
-        <h1>AutoMax Cloud Dashboard</h1>
+        <h1>AutoMax POS Business Monitor</h1>
         <div class="muted">Synced sales + backend health</div>
       </div>
       <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">

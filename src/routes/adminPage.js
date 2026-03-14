@@ -25,7 +25,7 @@ router.get(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>JP Max Admin Portal - AutoMax POS Control Panel</title>
+  <title>JP Max Admin Control Center - AutoMax POS Control Panel</title>
   <script>
     (function () {
       const saved = localStorage.getItem("automax-theme") || "dark";
@@ -246,10 +246,10 @@ router.get(
 <body>
   <div class="layout">
     <aside>
-      <div class="brand">JP Max Admin Portal<div class="muted" style="margin-top:6px;">AutoMax POS Control Panel</div></div>
+      <div class="brand">JP Max Admin Control Center<div class="muted" style="margin-top:6px;">AutoMax POS</div></div>
       <nav>
         <a href="/jpmax-admin" id="nav-portal">JP Max Portal</a>
-        <a href="/jpmax-admin/automax-pos" id="nav-overview">AutoMax POS Overview</a>
+        <a href="/jpmax-admin/automax-pos" id="nav-overview">AutoMax POS</a>
         <a href="/jpmax-admin/automax-pos/payments" id="nav-payments">Payments</a>
         <a href="/jpmax-admin/automax-pos/requests" id="nav-requests">License Requests</a>
         <a href="/jpmax-admin/automax-pos/issued" id="nav-issued">Issued Licenses</a>
@@ -284,8 +284,8 @@ router.get(
     <main>
       <div class="topbar">
         <div>
-          <div class="page-title">JP Max Admin Portal</div>
-          <div class="muted">AutoMax POS Control Panel</div>
+          <div class="page-title">JP Max Admin Control Center</div>
+          <div class="muted">AutoMax POS</div>
         </div>
         <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch theme" title="Switch theme">
           <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -297,7 +297,7 @@ router.get(
         </button>
       </div>
       <section id="section-portal" class="hidden">
-        <h1>JP Max Admin Portal</h1>
+        <h1>JP Max Admin Control Center</h1>
         <div class="muted">Internal platform control center</div>
         <div class="grid cards" style="margin-top:12px;">
           <div class="card">
