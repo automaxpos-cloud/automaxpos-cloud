@@ -1232,7 +1232,9 @@ let activeRequestId = null;
       if (!res.ok) {
         const msg = data?.message || data?.error || "Failed to load licenses.";
         byId("licenses_status").textContent = msg;
-        if (!silent) return setToast(msg, "var(--bad)");
+        const path = window.location.pathname;
+        const onLicensesPage = path.endsWith("/automax-pos/issued") || path.endsWith("/automax-pos/licenses");
+        if (!silent && onLicensesPage) return setToast(msg, "var(--bad)");
         return;
       }
       const body = byId("licenses_body");

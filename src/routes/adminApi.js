@@ -68,6 +68,21 @@ function normalizeAdminRole(role) {
   return ADMIN_ROLES.has(raw) ? raw : null;
 }
 
+async function getBackendLicensesColumns() {
+  const res = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name='backend_licenses'`
+  );
+  return new Set(res.rows.map((r) => r.column_name));
+}
+
+function selectCol(cols, name, alias) {
+  if (cols.has(name)) return `bl.${name}${alias ? " AS " + alias : ""}`;
+  return `NULL${alias ? " AS " + alias : ""}`;
+}
+
 async function logAdminUserAudit(admin, action, targetUserId, details) {
   try {
     await pool.query(
@@ -851,6 +866,7 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
 
   router.get("/licenses", adminJwt, async (_req, res) => {
     try {
+      const cols = await getBackendLicensesColumns();
       const rows = await pool.query(
         `
       SELECT
@@ -874,21 +890,21 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
         bl.expires_at,
         bl.grace_ends_at,
         bl.status,
-        bl.issued_by_name,
-        bl.issued_by_email,
-        bl.approved_by_admin_id,
-        bl.approved_at,
-        bl.revoked_by_admin_id,
-        bl.revoked_at,
-        bl.reissued_by_admin_id,
-        bl.reissued_at,
+        ${selectCol(cols, "issued_by_name", "issued_by_name")},
+        ${selectCol(cols, "issued_by_email", "issued_by_email")},
+        ${selectCol(cols, "approved_by_admin_id", "approved_by_admin_id")},
+        ${selectCol(cols, "approved_at", "approved_at")},
+        ${selectCol(cols, "revoked_by_admin_id", "revoked_by_admin_id")},
+        ${selectCol(cols, "revoked_at", "revoked_at")},
+        ${selectCol(cols, "reissued_by_admin_id", "reissued_by_admin_id")},
+        ${selectCol(cols, "reissued_at", "reissued_at")},
         bl.payload_b64,
         bl.sig_b64,
         bl.backend_id,
         bl.business_id,
         bl.branch_id,
-        COALESCE(ib.full_name, bl.issued_by_name) AS issued_by_display,
-        COALESCE(ib.email, bl.issued_by_email) AS issued_by_email_display,
+        COALESCE(ib.full_name, ${selectCol(cols, "issued_by_name")}) AS issued_by_display,
+        COALESCE(ib.email, ${selectCol(cols, "issued_by_email")}) AS issued_by_email_display,
         ab.full_name AS approved_by_display,
         rb.full_name AS revoked_by_display,
         re.full_name AS reissued_by_display,
@@ -901,21 +917,21 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
       LEFT JOIN businesses b ON b.id = bl.business_id
       LEFT JOIN branches br ON br.id = bl.branch_id
       LEFT JOIN backend_devices bd ON bd.id = bl.backend_id
-      LEFT JOIN cloud_users ib ON ib.id = bl.issued_by_admin_id
-      LEFT JOIN cloud_users ab ON ab.id = bl.approved_by_admin_id
-      LEFT JOIN cloud_users rb ON rb.id = bl.revoked_by_admin_id
-      LEFT JOIN cloud_users re ON re.id = bl.reissued_by_admin_id
+      LEFT JOIN cloud_users ib ON ib.id = ${selectCol(cols, "issued_by_admin_id")}
+      LEFT JOIN cloud_users ab ON ab.id = ${selectCol(cols, "approved_by_admin_id")}
+      LEFT JOIN cloud_users rb ON rb.id = ${selectCol(cols, "revoked_by_admin_id")}
+      LEFT JOIN cloud_users re ON re.id = ${selectCol(cols, "reissued_by_admin_id")}
       ORDER BY bl.updated_at DESC
       LIMIT 500
       `
-    );
-    return res.json({ ok: true, rows: rows.rows || [] });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("ADMIN LICENSES ERROR:", err);
-    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
-  }
-});
+      );
+      return res.json({ ok: true, rows: rows.rows || [] });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("ADMIN LICENSES ERROR:", err);
+      return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+    }
+  });
 
 router.post(
   "/licenses/:id/revoke",
@@ -1071,12 +1087,18 @@ router.get("/licenses/:id/json", adminJwt, async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+    const cols = await getBackendLicensesColumns();
     const row = await pool.query(
       `SELECT id, backend_id, business_id, license_id, payload_b64, sig_b64,
-              issued_by_name, issued_by_email, issued_at,
-              approved_by_admin_id, approved_at,
-              revoked_by_admin_id, revoked_at,
-              reissued_by_admin_id, reissued_at
+              ${selectCol(cols, "issued_by_name", "issued_by_name")},
+              ${selectCol(cols, "issued_by_email", "issued_by_email")},
+              ${selectCol(cols, "issued_at", "issued_at")},
+              ${selectCol(cols, "approved_by_admin_id", "approved_by_admin_id")},
+              ${selectCol(cols, "approved_at", "approved_at")},
+              ${selectCol(cols, "revoked_by_admin_id", "revoked_by_admin_id")},
+              ${selectCol(cols, "revoked_at", "revoked_at")},
+              ${selectCol(cols, "reissued_by_admin_id", "reissued_by_admin_id")},
+              ${selectCol(cols, "reissued_at", "reissued_at")}
        FROM backend_licenses
        WHERE id=$1`,
       [id]
