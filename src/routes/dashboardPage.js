@@ -191,6 +191,19 @@ router.get("/", (req, res) => {
     @media (max-width: 900px) {
     .payer-split { grid-template-columns: 1fr !important; }
   }
+
+      .nav-btn {
+        transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+        cursor: pointer;
+      }
+      .nav-btn:hover {
+        border-color: var(--accent);
+      }
+      .nav-btn.active {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
 </style>
 </head>
 <body>
@@ -211,12 +224,12 @@ router.get("/", (req, res) => {
       </button>
     </div>
     <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-      <button class="btn" id="nav-dashboard" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Dashboard</button>
-      <button class="btn" id="nav-monitoring" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Live Monitoring</button>
-      <button class="btn" id="nav-users" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Users</button>
-      <button class="btn" id="nav-licenses" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Licensing</button>
-      <button class="btn" id="export_pdf_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Export PDF</button>
-      <button class="btn" id="export_xlsx_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Export Excel</button>
+      <button class="btn nav-btn" id="nav-dashboard" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Dashboard</button>
+      <button class="btn nav-btn" id="nav-monitoring" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Live Monitoring</button>
+      <button class="btn nav-btn" id="nav-users" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Users</button>
+      <button class="btn nav-btn" id="nav-licenses" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Licensing</button>
+      <button class="btn nav-btn" id="export_pdf_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Export PDF</button>
+      <button class="btn nav-btn" id="export_xlsx_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Export Excel</button>
     </div>
   </header>
   <main>
@@ -1551,7 +1564,13 @@ router.get("/", (req, res) => {
       state.user = data.user || null;
     }
 
-    function showSection(name) {
+    function setActiveNav(id) {
+  const ids = ["nav-dashboard", "nav-monitoring", "nav-users", "nav-licenses"];
+  ids.forEach((k) => byId(k)?.classList.remove("active"));
+  if (id) byId(id)?.classList.add("active");
+}
+
+function showSection(name) {
       const dash = byId("dashboard-section");
       const monitoring = byId("monitoring-section");
       const users = byId("users-section");
@@ -2282,18 +2301,18 @@ router.get("/", (req, res) => {
         updateFilterContext();
         await loadLicenseBackends();
       });
-      bind("nav-dashboard", "click", () => showSection("dashboard"));
-      bind("nav-monitoring", "click", async () => {
+      bind("nav-dashboard", "click", () => { setActiveNav("nav-dashboard"); showSection("dashboard"); });
+      bind("nav-monitoring", "click", async () => { setActiveNav("nav-monitoring");
         showSection("monitoring");
         await loadLiveMonitoring();
       });
-      bind("nav-users", "click", async () => {
+      bind("nav-users", "click", async () => { setActiveNav("nav-users");
         showSection("users");
         await loadUserBusinesses();
         await loadUserBranches();
         await loadUsers();
       });
-      bind("nav-licenses", "click", async () => {
+      bind("nav-licenses", "click", async () => { setActiveNav("nav-licenses");
         showSection("licenses");
         await loadLicenseBackends();
         applyBackendSelection();
