@@ -760,27 +760,28 @@ router.get(
               </select>
             </div>
           </div>
-          <div class="row" style="margin-top:8px;">
-            <div style="flex:1;">
-              <label class="muted">Password</label>
-              <div class="row">
-                <input id="admin_user_password" type="password" placeholder="Set password" style="width:100%;" />
-                <button class="btn" id="admin_user_toggle_pass" type="button">Show</button>
-              </div>
-            </div>
-            <div style="flex:1;">
-              <label class="muted">Confirm Password</label>
-              <div class="row">
-                <input id="admin_user_password2" type="password" placeholder="Confirm password" style="width:100%;" />
-                <button class="btn" id="admin_user_toggle_pass2" type="button">Show</button>
-              </div>
-            </div>
-            <div style="display:flex; align-items:flex-end; gap:8px;">
-              <button class="btn" id="admin_user_clear" type="button">Clear</button>
-              <button class="btn primary" id="admin_user_save" type="button">Create User</button>
+        <div class="row" style="margin-top:8px;">
+          <div style="flex:1;">
+            <label class="muted">Password</label>
+            <div class="row">
+              <input id="admin_user_password" type="password" placeholder="Set password" style="width:100%;" />
+              <button class="btn" id="admin_user_toggle_pass" type="button">Show</button>
             </div>
           </div>
-          <div class="muted" id="admin_user_status" style="margin-top:8px;"></div>
+          <div style="flex:1;">
+            <label class="muted">Confirm Password</label>
+            <div class="row">
+              <input id="admin_user_password2" type="password" placeholder="Confirm password" style="width:100%;" />
+              <button class="btn" id="admin_user_toggle_pass2" type="button">Show</button>
+            </div>
+          </div>
+          <div style="display:flex; align-items:flex-end; gap:8px;">
+            <button class="btn" id="admin_user_clear" type="button">Clear</button>
+            <button class="btn primary" id="admin_user_save" type="button">Create User</button>
+          </div>
+        </div>
+        <div class="muted" id="admin_user_status" style="margin-top:8px;"></div>
+        <div class="muted" id="admin_user_pw_status" style="margin-top:6px;"></div>
         </div>
         <div class="toolbar">
           <select id="admin_users_role_filter" style="min-width:160px;">
@@ -1746,6 +1747,8 @@ let activeRequestId = null;
       byId("admin_user_password2").value = "";
       byId("admin_user_save").textContent = "Create User";
       byId("admin_user_status").textContent = "";
+      byId("admin_user_pw_status").textContent = "";
+      byId("admin_user_save").disabled = false;
     }
 
     function fillAdminUserForm(u) {
@@ -1758,6 +1761,8 @@ let activeRequestId = null;
       byId("admin_user_password2").value = "";
       byId("admin_user_save").textContent = "Update User";
       byId("admin_user_status").textContent = "Editing user " + (u.email || u.username || "");
+      byId("admin_user_pw_status").textContent = "";
+      byId("admin_user_save").disabled = false;
     }
 
     async function loadAdminUsers(silent) {
@@ -1814,6 +1819,32 @@ let activeRequestId = null;
           "</td>";
         body.appendChild(tr);
       });
+    }
+
+    function updateAdminUserPasswordMatch() {
+      const pw = byId("admin_user_password").value;
+      const pw2 = byId("admin_user_password2").value;
+      const status = byId("admin_user_pw_status");
+      const saveBtn = byId("admin_user_save");
+      if (editingAdminUserId) {
+        status.textContent = "";
+        saveBtn.disabled = false;
+        return;
+      }
+      if (!pw && !pw2) {
+        status.textContent = "";
+        saveBtn.disabled = false;
+        return;
+      }
+      if (pw && pw2 && pw === pw2) {
+        status.textContent = "Passwords match.";
+        status.style.color = "var(--good)";
+        saveBtn.disabled = false;
+        return;
+      }
+      status.textContent = "Passwords do not match.";
+      status.style.color = "var(--bad)";
+      saveBtn.disabled = true;
     }
 
     function manualChangeReason(issueType) {
@@ -2236,6 +2267,8 @@ let activeRequestId = null;
       byId("admin_user_toggle_pass2")?.addEventListener("click", () => {
         togglePassword("admin_user_password2", "admin_user_toggle_pass2");
       });
+      byId("admin_user_password")?.addEventListener("input", updateAdminUserPasswordMatch);
+      byId("admin_user_password2")?.addEventListener("input", updateAdminUserPasswordMatch);
       byId("admin_users_role_filter")?.addEventListener("change", renderAdminUsers);
       byId("admin_users_status_filter")?.addEventListener("change", renderAdminUsers);
       byId("requests_refresh").addEventListener("click", loadRequests);

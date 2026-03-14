@@ -184,6 +184,10 @@ router.get("/me", adminJwt, (req, res) => {
 
 router.get("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (_req, res) => {
   try {
+    const exists = await pool.query(`SELECT to_regclass('public.cloud_users') AS t`);
+    if (!exists.rows[0]?.t) {
+      return res.status(500).json({ ok: false, error: "MISSING_TABLE", message: "cloud_users table missing" });
+    }
     const cols = await getCloudUsersColumns();
     const joinCreated = cols.has("created_by") ? "LEFT JOIN cloud_users cu ON cu.id = u.created_by" : "";
     const joinRevoked = cols.has("revoked_by") ? "LEFT JOIN cloud_users ru ON ru.id = u.revoked_by" : "";
@@ -221,6 +225,10 @@ router.get("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (_req, res) =
 
 router.post("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) => {
   try {
+    const exists = await pool.query(`SELECT to_regclass('public.cloud_users') AS t`);
+    if (!exists.rows[0]?.t) {
+      return res.status(500).json({ ok: false, error: "MISSING_TABLE", message: "cloud_users table missing" });
+    }
     const fullName = String(req.body?.full_name || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
@@ -911,6 +919,8 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
       if (!exists.rows[0]?.t) {
         return res.json({ ok: true, rows: [], missing: "backend_licenses" });
       }
+      const userCols = await getCloudUsersColumns();
+      const ibEmailExpr = userCols.has("email") ? "ib.email" : "NULL";
       const cols = await getBackendLicensesColumns();
       const rows = await pool.query(
         `
@@ -949,7 +959,7 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
         bl.business_id,
         bl.branch_id,
         COALESCE(ib.full_name, ${selectColExpr(cols, "issued_by_name")}) AS issued_by_display,
-        COALESCE(ib.email, ${selectColExpr(cols, "issued_by_email")}) AS issued_by_email_display,
+        COALESCE(${ibEmailExpr}, ${selectColExpr(cols, "issued_by_email")}) AS issued_by_email_display,
         ab.full_name AS approved_by_display,
         rb.full_name AS revoked_by_display,
         re.full_name AS reissued_by_display,
