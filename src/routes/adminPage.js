@@ -222,9 +222,11 @@ router.get(
       border-radius: 12px;
       padding: 16px;
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
     .modal .panel .content {
-      max-height: calc(88vh - 90px);
+      flex: 1;
       overflow-y: auto;
       padding-right: 6px;
     }
@@ -705,8 +707,13 @@ router.get(
   </div>
   <div class="modal" id="detail_modal">
     <div class="panel">
-      <h3 id="detail_title">Details</h3>
-      <div class="detail-grid" id="detail_grid"></div>
+      <div class="row">
+        <h3 id="detail_title">Details</h3>
+        <div class="spacer"></div>
+      </div>
+      <div class="content">
+        <div class="detail-grid" id="detail_grid"></div>
+      </div>
       <div class="row" style="margin-top:12px;">
         <div class="spacer"></div>
         <button class="btn" id="detail_reject">Reject</button>
