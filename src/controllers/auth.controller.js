@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const { pool } = require("../db/pool");
 
 exports.login = async (req, res) => {
-  const { username, password } = req.body || {};
+  const { username, password, remember } = req.body || {};
   const loginId = String(username || "").trim().toLowerCase();
   const adminUser = process.env.SUPERADMIN_USERNAME || process.env.OWNER_EMAIL;
   const adminHash = process.env.SUPERADMIN_PASSWORD_HASH || process.env.OWNER_PASSWORD_HASH;
@@ -42,7 +42,7 @@ exports.login = async (req, res) => {
         auth_source: "env_superadmin"
       },
       secret,
-      { expiresIn: "12h" }
+      { expiresIn: remember ? "30d" : "12h" }
     );
     return res.json({ ok: true, token });
   }
@@ -87,7 +87,7 @@ exports.login = async (req, res) => {
         auth_source: "cloud_user"
       },
       secret,
-      { expiresIn: "12h" }
+      { expiresIn: remember ? "30d" : "12h" }
     );
     return res.json({ ok: true, token });
   } catch (err) {

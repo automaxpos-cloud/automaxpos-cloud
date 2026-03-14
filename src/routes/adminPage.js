@@ -269,7 +269,7 @@ router.get(
         </div>
         <label class="muted" style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
           <input id="admin_remember" type="checkbox" />
-          Remember me
+          Remember me (longer session)
         </label>
         <button class="btn primary" id="admin_login_btn">Login</button>
         <div id="admin_login_status" class="muted" style="margin-top:8px;"></div>
@@ -758,11 +758,17 @@ router.get(
           <div class="row" style="margin-top:8px;">
             <div style="flex:1;">
               <label class="muted">Password</label>
-              <input id="admin_user_password" type="password" placeholder="Set password" style="width:100%;" />
+              <div class="row">
+                <input id="admin_user_password" type="password" placeholder="Set password" style="width:100%;" />
+                <button class="btn" id="admin_user_toggle_pass" type="button">Show</button>
+              </div>
             </div>
             <div style="flex:1;">
               <label class="muted">Confirm Password</label>
-              <input id="admin_user_password2" type="password" placeholder="Confirm password" style="width:100%;" />
+              <div class="row">
+                <input id="admin_user_password2" type="password" placeholder="Confirm password" style="width:100%;" />
+                <button class="btn" id="admin_user_toggle_pass2" type="button">Show</button>
+              </div>
             </div>
             <div style="display:flex; align-items:flex-end; gap:8px;">
               <button class="btn" id="admin_user_clear" type="button">Clear</button>
@@ -772,6 +778,18 @@ router.get(
           <div class="muted" id="admin_user_status" style="margin-top:8px;"></div>
         </div>
         <div class="toolbar">
+          <select id="admin_users_role_filter" style="min-width:160px;">
+            <option value="">All roles</option>
+            <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+            <option value="ADMIN">ADMIN</option>
+            <option value="SUPPORT">SUPPORT</option>
+            <option value="VIEWER">VIEWER</option>
+          </select>
+          <select id="admin_users_status_filter" style="min-width:140px;">
+            <option value="">All statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="REVOKED">Revoked</option>
+          </select>
           <button class="btn" id="admin_users_refresh">Refresh</button>
           <div class="status-line" id="admin_users_status"></div>
         </div>
@@ -845,6 +863,36 @@ router.get(
       </div>
     </div>
   </div>
+  <div class="modal" id="admin_reset_modal">
+    <div class="panel">
+      <div class="row">
+        <h3>Reset Admin Password</h3>
+        <div class="spacer"></div>
+      </div>
+      <div class="content">
+        <div style="margin-bottom:10px;">
+          <label class="muted">New Password</label>
+          <div class="row">
+            <input id="admin_reset_password" type="password" placeholder="New password" style="width:100%;" />
+            <button class="btn" id="admin_reset_toggle" type="button">Show</button>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label class="muted">Confirm Password</label>
+          <div class="row">
+            <input id="admin_reset_password2" type="password" placeholder="Confirm password" style="width:100%;" />
+            <button class="btn" id="admin_reset_toggle2" type="button">Show</button>
+          </div>
+        </div>
+        <div class="muted" id="admin_reset_status"></div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <div class="spacer"></div>
+        <button class="btn" id="admin_reset_cancel">Cancel</button>
+        <button class="btn primary" id="admin_reset_confirm">Reset</button>
+      </div>
+    </div>
+  </div>
   <div class="toast" id="toast"></div>
 
   <script>
@@ -864,7 +912,17 @@ router.get(
       modal.style.display = "none";
       document.body.style.overflow = "";
     }
+
+    function togglePassword(inputId, btnId) {
+      const input = byId(inputId);
+      const btn = byId(btnId);
+      if (!input || !btn) return;
+      const next = input.type === "password" ? "text" : "password";
+      input.type = next;
+      btn.textContent = next === "password" ? "Show" : "Hide";
+    }
 let activeRequestId = null;
+    let activeResetUserId = null;
     let currentAdminRole = null;
     let adminUsersMap = new Map();
     let editingAdminUserId = null;
@@ -1022,7 +1080,7 @@ let activeRequestId = null;
       const res = await fetch("/api/cloud/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password, remember: byId("admin_remember")?.checked })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.token) {
@@ -1703,6 +1761,20 @@ let activeRequestId = null;
       }
       const rows = data.rows || [];
       adminUsersMap = new Map(rows.map((r) => [String(r.id), r]));
+      renderAdminUsers();
+    }
+
+    function renderAdminUsers() {
+      const roleFilter = (byId("admin_users_role_filter")?.value || "").toUpperCase();
+      const statusFilter = (byId("admin_users_status_filter")?.value || "").toUpperCase();
+      const rows = Array.from(adminUsersMap.values()).filter((r) => {
+        const role = (String(r.role || "").toUpperCase() === "SUPERADMIN" ? "SUPER_ADMIN" : String(r.role || "").toUpperCase());
+        const active = r.is_active !== false;
+        if (roleFilter && role !== roleFilter) return false;
+        if (statusFilter === "ACTIVE" && !active) return false;
+        if (statusFilter === "REVOKED" && active) return false;
+        return true;
+      });
       byId("admin_users_status").textContent = rows.length + " users";
       byId("admin_users_empty").classList.toggle("hidden", rows.length > 0);
       const body = byId("admin_users_body");
@@ -2137,12 +2209,16 @@ let activeRequestId = null;
       byId("admin_login_btn").addEventListener("click", doLogin);
       byId("admin_logout_btn").addEventListener("click", logout);
       byId("admin_toggle_pass").addEventListener("click", () => {
-        const input = byId("admin_pass");
-        if (!input) return;
-        const next = input.type === "password" ? "text" : "password";
-        input.type = next;
-        byId("admin_toggle_pass").textContent = next === "password" ? "Show" : "Hide";
+        togglePassword("admin_pass", "admin_toggle_pass");
       });
+      byId("admin_user_toggle_pass")?.addEventListener("click", () => {
+        togglePassword("admin_user_password", "admin_user_toggle_pass");
+      });
+      byId("admin_user_toggle_pass2")?.addEventListener("click", () => {
+        togglePassword("admin_user_password2", "admin_user_toggle_pass2");
+      });
+      byId("admin_users_role_filter")?.addEventListener("change", renderAdminUsers);
+      byId("admin_users_status_filter")?.addEventListener("change", renderAdminUsers);
       byId("requests_refresh").addEventListener("click", loadRequests);
       byId("licenses_refresh").addEventListener("click", loadLicenses);
       byId("activations_refresh").addEventListener("click", loadActivations);
@@ -2169,16 +2245,11 @@ let activeRequestId = null;
           return;
         }
         if (action === "reset") {
-          const pw = window.prompt("Enter new password for " + (user.email || user.username || ""));
-          if (!pw) return;
-          const res = await fetch("/api/admin/users/" + id + "/reset-password", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...authHeaders() },
-            body: JSON.stringify({ password: pw })
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) return setToast(data?.message || data?.error || "Reset failed.", "var(--bad)");
-          setToast("Password reset.", "var(--good)");
+          activeResetUserId = id;
+          byId("admin_reset_status").textContent = "";
+          byId("admin_reset_password").value = "";
+          byId("admin_reset_password2").value = "";
+          openModal("admin_reset_modal");
           return;
         }
         if (action === "revoke") {
@@ -2210,6 +2281,48 @@ let activeRequestId = null;
         clearTimeout(window.__payTimer);
         window.__payTimer = setTimeout(loadPayments, 300);
       });
+      byId("admin_reset_toggle")?.addEventListener("click", () => {
+        togglePassword("admin_reset_password", "admin_reset_toggle");
+      });
+      byId("admin_reset_toggle2")?.addEventListener("click", () => {
+        togglePassword("admin_reset_password2", "admin_reset_toggle2");
+      });
+      byId("admin_reset_cancel")?.addEventListener("click", () => {
+        closeModal("admin_reset_modal");
+      });
+      byId("admin_reset_modal")?.addEventListener("click", (e) => {
+        if (e.target && e.target.id === "admin_reset_modal") closeModal("admin_reset_modal");
+      });
+      byId("admin_reset_confirm")?.addEventListener("click", async () => {
+        if (!activeResetUserId) return;
+        const pw = byId("admin_reset_password").value;
+        const pw2 = byId("admin_reset_password2").value;
+        const status = byId("admin_reset_status");
+        if (!pw || pw.length < 6) {
+          status.textContent = "Password must be at least 6 characters.";
+          return;
+        }
+        if (pw !== pw2) {
+          status.textContent = "Passwords do not match.";
+          return;
+        }
+        status.textContent = "Resetting...";
+        const res = await fetch("/api/admin/users/" + activeResetUserId + "/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ password: pw })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          status.textContent = data?.message || data?.error || "Reset failed.";
+          return;
+        }
+        setToast("Password reset.", "var(--good)");
+        byId("admin_reset_password").value = "";
+        byId("admin_reset_password2").value = "";
+        byId("admin_reset_status").textContent = "";
+        closeModal("admin_reset_modal");
+      });
       byId("sync_refresh").addEventListener("click", loadSyncMonitor);
       byId("settings_save").addEventListener("click", savePlatformSettings);
       byId("admin_users_refresh")?.addEventListener("click", loadAdminUsers);
@@ -2227,8 +2340,12 @@ let activeRequestId = null;
           return;
         }
         if (!editingAdminUserId) {
-          if (!pass || pass !== pass2) {
-            byId("admin_user_status").textContent = "Passwords do not match or are empty.";
+          if (!pass || pass.length < 6) {
+            byId("admin_user_status").textContent = "Password must be at least 6 characters.";
+            return;
+          }
+          if (pass !== pass2) {
+            byId("admin_user_status").textContent = "Passwords do not match.";
             return;
           }
         }
