@@ -639,18 +639,41 @@ router.post(
       extraDeviceCount,
       requestId: row.request_id,
       hardwareBundle: row.hardware_bundle,
-      quotedPrice: row.amount_expected
+      quotedPrice: row.amount_expected,
+      issuedBy: req.admin,
+      approvedBy: req.admin,
+      updatedBy: req.admin
     });
 
     await pool.query(
       `UPDATE license_requests
        SET status='LICENSE_READY',
            request_status=COALESCE(request_status,'approved'),
+           approved_by_admin_id=$2,
+           approved_at=NOW(),
            reviewed_at=NOW(),
            updated_at=NOW()
        WHERE id=$1`,
-      [requestId]
+      [requestId, req.admin?.user_id || null]
     );
+    await logAudit({
+      admin: req.admin,
+      action: "LICENSE_APPROVED",
+      backendId: issued?.backend_id,
+      businessId: issued?.business_id,
+      licenseId: issued?.license_id,
+      oldValue: { request_id: row.request_id },
+      newValue: { status: "APPROVED" }
+    });
+    await logAudit({
+      admin: req.admin,
+      action: "LICENSE_ISSUED",
+      backendId: issued?.backend_id,
+      businessId: issued?.business_id,
+      licenseId: issued?.license_id,
+      oldValue: null,
+      newValue: { request_id: row.request_id }
+    });
 
     return res.json({
       ok: true,
@@ -851,11 +874,24 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
         bl.expires_at,
         bl.grace_ends_at,
         bl.status,
+        bl.issued_by_name,
+        bl.issued_by_email,
+        bl.approved_by_admin_id,
+        bl.approved_at,
+        bl.revoked_by_admin_id,
+        bl.revoked_at,
+        bl.reissued_by_admin_id,
+        bl.reissued_at,
         bl.payload_b64,
         bl.sig_b64,
         bl.backend_id,
         bl.business_id,
         bl.branch_id,
+        COALESCE(ib.full_name, bl.issued_by_name) AS issued_by_display,
+        COALESCE(ib.email, bl.issued_by_email) AS issued_by_email_display,
+        ab.full_name AS approved_by_display,
+        rb.full_name AS revoked_by_display,
+        re.full_name AS reissued_by_display,
         b.name AS business_name,
         br.name AS branch_name,
         bd.machine_id,
@@ -865,6 +901,10 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
       LEFT JOIN businesses b ON b.id = bl.business_id
       LEFT JOIN branches br ON br.id = bl.branch_id
       LEFT JOIN backend_devices bd ON bd.id = bl.backend_id
+      LEFT JOIN cloud_users ib ON ib.id = bl.issued_by_admin_id
+      LEFT JOIN cloud_users ab ON ab.id = bl.approved_by_admin_id
+      LEFT JOIN cloud_users rb ON rb.id = bl.revoked_by_admin_id
+      LEFT JOIN cloud_users re ON re.id = bl.reissued_by_admin_id
       ORDER BY bl.updated_at DESC
       LIMIT 500
       `
@@ -887,17 +927,22 @@ router.post(
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
     const result = await pool.query(
       `UPDATE backend_licenses
-       SET status='REVOKED', updated_at=NOW()
+       SET status='REVOKED',
+           license_status='REVOKED',
+           revoked_by_admin_id=$2,
+           revoked_at=NOW(),
+           updated_by_admin_id=$2,
+           updated_at=NOW()
        WHERE id=$1
        RETURNING id, backend_id, business_id, license_id`,
-      [id]
+      [id, req.admin?.user_id || null]
     );
     if (!result.rows.length) {
       return res.status(404).json({ ok: false, error: "NOT_FOUND" });
     }
     await logAudit({
       admin: req.admin,
-      action: "LICENSE_REVOKE",
+      action: "LICENSE_REVOKED",
       backendId: result.rows[0].backend_id,
       businessId: result.rows[0].business_id,
       licenseId: result.rows[0].license_id,
@@ -934,7 +979,9 @@ router.post(
       backendId: row.rows[0].backend_id,
       issueType: "renewal",
       planName: row.rows[0].plan,
-      baseDeviceLimit: row.rows[0].device_limit
+      baseDeviceLimit: row.rows[0].device_limit,
+      issuedBy: req.admin,
+      updatedBy: req.admin
     });
     await logAudit({
       admin: req.admin,
@@ -976,13 +1023,21 @@ router.post(
       issueType: "correction",
       planName: row.rows[0].plan,
       baseDeviceLimit: row.rows[0].device_limit,
-      expiresAtOverride: row.rows[0].expires_at
+      expiresAtOverride: row.rows[0].expires_at,
+      issuedBy: req.admin,
+      updatedBy: req.admin,
+      reissuedBy: req.admin
     });
     await pool.query(
       `UPDATE backend_licenses
-       SET status='REPLACED', license_status='REPLACED', updated_at=NOW()
+       SET status='REPLACED',
+           license_status='REPLACED',
+           reissued_by_admin_id=$2,
+           reissued_at=NOW(),
+           updated_by_admin_id=$2,
+           updated_at=NOW()
        WHERE id=$1`,
-      [id]
+      [id, req.admin?.user_id || null]
     );
     try {
       await pool.query(
@@ -996,7 +1051,7 @@ router.post(
     } catch (_) {}
     await logAudit({
       admin: req.admin,
-      action: "LICENSE_REPLACED",
+      action: "LICENSE_REISSUED",
       backendId: lic.backend_id,
       businessId: lic.business_id,
       licenseId: lic.license_id,
@@ -1017,7 +1072,11 @@ router.get("/licenses/:id/json", adminJwt, async (req, res) => {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
     const row = await pool.query(
-      `SELECT id, backend_id, business_id, license_id, payload_b64, sig_b64
+      `SELECT id, backend_id, business_id, license_id, payload_b64, sig_b64,
+              issued_by_name, issued_by_email, issued_at,
+              approved_by_admin_id, approved_at,
+              revoked_by_admin_id, revoked_at,
+              reissued_by_admin_id, reissued_at
        FROM backend_licenses
        WHERE id=$1`,
       [id]
@@ -1039,7 +1098,16 @@ router.get("/licenses/:id/json", adminJwt, async (req, res) => {
       license: {
         license_id: row.rows[0].license_id,
         payload_b64: row.rows[0].payload_b64,
-        sig_b64: row.rows[0].sig_b64
+        sig_b64: row.rows[0].sig_b64,
+        issued_by_name: row.rows[0].issued_by_name || null,
+        issued_by_email: row.rows[0].issued_by_email || null,
+        issued_at: row.rows[0].issued_at || null,
+        approved_by_admin_id: row.rows[0].approved_by_admin_id || null,
+        approved_at: row.rows[0].approved_at || null,
+        revoked_by_admin_id: row.rows[0].revoked_by_admin_id || null,
+        revoked_at: row.rows[0].revoked_at || null,
+        reissued_by_admin_id: row.rows[0].reissued_by_admin_id || null,
+        reissued_at: row.rows[0].reissued_at || null
       }
     });
   } catch (err) {
@@ -1148,11 +1216,14 @@ router.post(
         licenseStatus,
         hardwareBundle,
         quotedPrice: Number.isFinite(quotedPrice) ? quotedPrice : null,
-        requestId: requestId || null
+        requestId: requestId || null,
+        issuedBy: req.admin,
+        updatedBy: req.admin,
+        reissuedBy: issueType === "correction" ? req.admin : null
       });
       await logAudit({
         admin: req.admin,
-        action: "LICENSE_CREATE",
+        action: "LICENSE_ISSUED",
         backendId: lic.backend_id,
         businessId: lic.business_id,
         licenseId: lic.license_id,
@@ -1193,11 +1264,14 @@ router.post(
         issueType: "correction",
         planName: plan,
         baseDeviceLimit: Number.isFinite(deviceLimit) ? deviceLimit : null,
-        expiresAtOverride: expiresAt || null
+        expiresAtOverride: expiresAt || null,
+        issuedBy: req.admin,
+        updatedBy: req.admin,
+        reissuedBy: req.admin
       });
       await logAudit({
         admin: req.admin,
-        action: "LICENSE_UPDATE",
+        action: "LICENSE_REISSUED",
         backendId: lic.backend_id,
         businessId: lic.business_id,
         licenseId: lic.license_id,

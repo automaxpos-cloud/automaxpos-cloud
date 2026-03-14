@@ -416,6 +416,7 @@ router.get(
               <th>Device Limit</th>
               <th>Used Devices</th>
               <th>Machine ID</th>
+              <th>Issued By</th>
               <th>Issued At</th>
               <th>Expires At</th>
               <th>Status</th>
@@ -1239,6 +1240,7 @@ let activeRequestId = null;
       byId("licenses_empty").classList.toggle("hidden", (data.rows || []).length > 0);
       (data.rows || []).forEach((r) => {
         const tr = document.createElement("tr");
+        const issuedBy = r.issued_by_display || r.issued_by_name || r.issued_by_email || "Legacy Record";
         tr.innerHTML =
           "<td><button class='btn' data-copy='" + (r.license_id || "") + "'>Copy</button> " + (r.license_id || "-") + "</td>" +
           "<td>" + (r.backend_id || "-") + "</td>" +
@@ -1248,6 +1250,7 @@ let activeRequestId = null;
           "<td>" + formatDeviceLimit(r.device_limit) + "</td>" +
           "<td>" + (r.used_devices ?? "-") + "</td>" +
           "<td>" + (r.machine_id ? r.machine_id.slice(0, 10) + "..." : "-") + "</td>" +
+          "<td>" + issuedBy + "</td>" +
           "<td>" + (r.issued_at ? new Date(r.issued_at).toLocaleString() : "-") + "</td>" +
           "<td>" + (r.expires_at ? new Date(r.expires_at).toLocaleString() : "-") + "</td>" +
           "<td>" + statusBadge(r.status) + "</td>" +
@@ -2056,11 +2059,18 @@ let activeRequestId = null;
             { label: "Plan", value: r.plan },
             { label: "Device Limit", value: r.device_limit },
             { label: "Key ID", value: r.key_id || r.license_key_id || "jpmax-license-key-2026-01" },
+            { label: "Issued By", value: r.issued_by_display || r.issued_by_name || r.issued_by_email || "Legacy Record" },
+            { label: "Issued At", value: r.issued_at },
+            { label: "Approved By", value: r.approved_by_display || "—" },
+            { label: "Approved At", value: r.approved_at || "—" },
+            { label: "Revoked By", value: r.revoked_by_display || "—" },
+            { label: "Revoked At", value: r.revoked_at || "—" },
+            { label: "Reissued By", value: r.reissued_by_display || "—" },
+            { label: "Reissued At", value: r.reissued_at || "—" },
             { label: "Backend ID", value: r.backend_id, warn: !r.backend_id },
             { label: "Business ID", value: r.business_id, warn: !r.business_id },
             { label: "Branch ID", value: r.branch_id, warn: !r.branch_id },
             { label: "Machine ID", value: r.machine_id },
-            { label: "Issued At", value: r.issued_at },
             { label: "Expires At", value: r.expires_at },
             { label: "Status", value: r.status }
           ]);

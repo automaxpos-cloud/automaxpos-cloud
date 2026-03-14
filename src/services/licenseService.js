@@ -197,7 +197,11 @@ async function issueBackendLicense({
   quotedPrice,
   requestId,
   plan,
-  deviceLimitOverride
+  deviceLimitOverride,
+  issuedBy,
+  approvedBy,
+  updatedBy,
+  reissuedBy
 }) {
   const backendRes = await query(
     `SELECT id, business_id, branch_id, machine_id
@@ -300,6 +304,13 @@ async function issueBackendLicense({
 
   const signed = signPayload(payload);
 
+  const issuerId = issuedBy?.user_id || issuedBy?.id || null;
+  const issuerName = issuedBy?.full_name || issuedBy?.username || null;
+  const issuerEmail = issuedBy?.email || null;
+  const approvedId = approvedBy?.user_id || approvedBy?.id || null;
+  const updatedId = updatedBy?.user_id || updatedBy?.id || issuerId || null;
+  const reissuedId = reissuedBy?.user_id || reissuedBy?.id || null;
+
   await query(
     `
       INSERT INTO backend_licenses (
@@ -328,6 +339,14 @@ async function issueBackendLicense({
         request_id,
         hardware_bundle,
         quoted_price,
+        issued_by_admin_id,
+        issued_by_name,
+        issued_by_email,
+        approved_by_admin_id,
+        approved_at,
+        updated_by_admin_id,
+        reissued_by_admin_id,
+        reissued_at,
         updated_at
       ) VALUES (
         $1,$2,$3,$4,$5,$6,$7,
@@ -336,6 +355,7 @@ async function issueBackendLicense({
         to_timestamp($10),
         $11,$12,$13,'ACTIVE',
         $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
+        $25,$26,$27,$28,$29,$30,$31,$32,
         NOW()
       )
       ON CONFLICT (backend_id) DO UPDATE SET
@@ -361,6 +381,14 @@ async function issueBackendLicense({
         request_id = EXCLUDED.request_id,
         hardware_bundle = EXCLUDED.hardware_bundle,
         quoted_price = EXCLUDED.quoted_price,
+        issued_by_admin_id = COALESCE(EXCLUDED.issued_by_admin_id, backend_licenses.issued_by_admin_id),
+        issued_by_name = COALESCE(EXCLUDED.issued_by_name, backend_licenses.issued_by_name),
+        issued_by_email = COALESCE(EXCLUDED.issued_by_email, backend_licenses.issued_by_email),
+        approved_by_admin_id = COALESCE(EXCLUDED.approved_by_admin_id, backend_licenses.approved_by_admin_id),
+        approved_at = COALESCE(EXCLUDED.approved_at, backend_licenses.approved_at),
+        updated_by_admin_id = COALESCE(EXCLUDED.updated_by_admin_id, backend_licenses.updated_by_admin_id),
+        reissued_by_admin_id = COALESCE(EXCLUDED.reissued_by_admin_id, backend_licenses.reissued_by_admin_id),
+        reissued_at = COALESCE(EXCLUDED.reissued_at, backend_licenses.reissued_at),
         updated_at = NOW()
     `,
     [
@@ -387,7 +415,15 @@ async function issueBackendLicense({
       licenseStatus || "active",
       requestId || null,
       hardwareBundle || null,
-      quotedPrice != null ? Number(quotedPrice) : null
+      quotedPrice != null ? Number(quotedPrice) : null,
+      issuerId,
+      issuerName,
+      issuerEmail,
+      approvedId,
+      approvedId ? new Date() : null,
+      updatedId,
+      reissuedId,
+      reissuedId ? new Date() : null
     ]
   );
 
@@ -412,7 +448,15 @@ async function issueBackendLicense({
     previous_license_id: previousLicenseId,
     change_reason: changeReason,
     license_status: licenseStatus || "active",
-    status: "ACTIVE"
+    status: "ACTIVE",
+    issued_by_admin_id: issuerId,
+    issued_by_name: issuerName,
+    issued_by_email: issuerEmail,
+    approved_by_admin_id: approvedId,
+    approved_at: approvedId ? new Date().toISOString() : null,
+    updated_by_admin_id: updatedId,
+    reissued_by_admin_id: reissuedId,
+    reissued_at: reissuedId ? new Date().toISOString() : null
   };
 }
 
