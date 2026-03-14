@@ -163,7 +163,12 @@ router.get("/license-requests", adminJwt, async (req, res) => {
       `,
       [q]
     );
-    return res.json({ ok: true, rows: rows.rows || [] });
+    const keyId = process.env.LICENSE_KEY_ID || "jpmax-license-key-2026-01";
+    const out = (rows.rows || []).map((r) => ({
+      ...r,
+      key_id: keyId
+    }));
+    return res.json({ ok: true, rows: out });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("ADMIN REQUESTS ERROR:", err);

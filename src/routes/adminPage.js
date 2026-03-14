@@ -1612,6 +1612,7 @@ let activeRequestId = null;
             { label: "License ID", value: r.license_id },
             { label: "Plan", value: r.plan },
             { label: "Device Limit", value: r.device_limit },
+            { label: "Key ID", value: r.key_id || r.license_key_id || "jpmax-license-key-2026-01" },
             { label: "Backend ID", value: r.backend_id, warn: !r.backend_id },
             { label: "Business ID", value: r.business_id, warn: !r.business_id },
             { label: "Branch ID", value: r.branch_id, warn: !r.branch_id },
