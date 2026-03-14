@@ -651,6 +651,13 @@ router.get("/", (req, res) => {
             <div class="muted" style="font-size:12px;margin-top:2px;">
               If the contact phone and payment phone are the same, enter the same number here.
             </div>
+            <div style="margin-top:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--panel);">
+              <div style="font-weight:600;margin-bottom:4px;">Airtel Money Payment Details</div>
+              <div class="muted" style="margin-bottom:6px;">Pay through Airtel Money using Get Cash</div>
+              <div class="muted">Agent Code: <strong>20124624</strong></div>
+              <div class="muted">Name: <strong>James Phiri</strong></div>
+              <div class="muted" style="margin-top:6px;font-size:12px;">Use the same phone number entered above for easier payment verification.</div>
+            </div>
           </div>
           <div style="grid-column:1/-1;">
             <label class="muted">Notes</label>
