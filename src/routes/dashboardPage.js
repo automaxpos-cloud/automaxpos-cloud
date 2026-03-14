@@ -632,6 +632,7 @@ router.get("/", (req, res) => {
           <div>
             <label class="muted">Request Type</label>
             <select id="req_type" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);">
+              <option value="">Select type</option>
               <option value="new_license">New License</option>
               <option value="renewal">Renewal</option>
               <option value="device_addon">Extra Device Add-On</option>
@@ -2002,9 +2003,13 @@ function showSection(name) {
       setInput("req_phone", "");
       setInput("req_payer_phone", "");
       setInput("req_notes", "");
+      setInput("req_current_plan", "");
+      setInput("req_current_total", "");
       setInput("req_extra_devices", "0");
+      setInput("req_total_devices", "");
+      setInput("req_amount_expected", "");
       const typeSel = byId("req_type");
-      if (typeSel) typeSel.value = "new_license";
+      if (typeSel) typeSel.value = "";
       const planSel = byId("req_plan");
       if (planSel) planSel.value = "Starter";
       const bundleSel = byId("req_hardware_bundle");
@@ -2086,12 +2091,19 @@ function showSection(name) {
     }
 
     function updateRequestDerivedFields() {
-      const reqType = byId("req_type")?.value || "new_license";
+      const reqType = byId("req_type")?.value || "";
       const planSel = byId("req_plan");
       const currentPlan = byId("req_current_plan")?.value || "";
       const currentTotal = Number(byId("req_current_total")?.value || 0);
       const extraDevices = Math.max(0, Number(byId("req_extra_devices")?.value || 0));
       const hardwareBundle = byId("req_hardware_bundle")?.value || "No Printer";
+
+      if (!reqType) {
+        if (planSel) planSel.disabled = true;
+        setInput("req_total_devices", "");
+        setInput("req_amount_expected", "");
+        return;
+      }
 
       if ((reqType === "device_addon" || reqType === "renewal") && currentPlan && planSel) {
         planSel.value = currentPlan;
@@ -2450,6 +2462,9 @@ function showSection(name) {
       updateAuthContext();
       updateExpiryIndicator();
       await refreshAll();
+      const reqType = byId("req_type");
+      if (reqType) reqType.value = "";
+      updateRequestDerivedFields();
       restartStatusPolling();
     }
     window.addEventListener("error", (e) => {
