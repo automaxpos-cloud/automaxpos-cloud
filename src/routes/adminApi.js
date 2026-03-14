@@ -83,6 +83,21 @@ function selectCol(cols, name, alias) {
   return `NULL${alias ? " AS " + alias : ""}`;
 }
 
+async function getCloudUsersColumns() {
+  const res = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name='cloud_users'`
+  );
+  return new Set(res.rows.map((r) => r.column_name));
+}
+
+function selectUserCol(cols, name, alias) {
+  if (cols.has(name)) return `u.${name}${alias ? " AS " + alias : ""}`;
+  return `NULL${alias ? " AS " + alias : ""}`;
+}
+
 async function logAdminUserAudit(admin, action, targetUserId, details) {
   try {
     await pool.query(
@@ -165,26 +180,29 @@ router.get("/me", adminJwt, (req, res) => {
 
 router.get("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (_req, res) => {
   try {
+    const cols = await getCloudUsersColumns();
+    const joinCreated = cols.has("created_by") ? "LEFT JOIN cloud_users cu ON cu.id = u.created_by" : "";
+    const joinRevoked = cols.has("revoked_by") ? "LEFT JOIN cloud_users ru ON ru.id = u.revoked_by" : "";
     const rows = await pool.query(
       `
       SELECT
         u.id,
         u.full_name,
         u.username,
-        u.email,
+        ${selectUserCol(cols, "email", "email")},
         u.role,
         u.is_active,
         u.created_at,
         u.updated_at,
-        u.created_by,
-        u.revoked_at,
-        u.revoked_by,
-        u.last_login_at,
-        cu.username AS created_by_username,
-        ru.username AS revoked_by_username
+        ${selectUserCol(cols, "created_by", "created_by")},
+        ${selectUserCol(cols, "revoked_at", "revoked_at")},
+        ${selectUserCol(cols, "revoked_by", "revoked_by")},
+        ${selectUserCol(cols, "last_login_at", "last_login_at")},
+        ${cols.has("created_by") ? "cu.username" : "NULL"} AS created_by_username,
+        ${cols.has("revoked_by") ? "ru.username" : "NULL"} AS revoked_by_username
       FROM cloud_users u
-      LEFT JOIN cloud_users cu ON cu.id = u.created_by
-      LEFT JOIN cloud_users ru ON ru.id = u.revoked_by
+      ${joinCreated}
+      ${joinRevoked}
       WHERE UPPER(u.role) IN ('SUPER_ADMIN','SUPERADMIN','ADMIN','SUPPORT','VIEWER')
       ORDER BY u.created_at DESC
       `
@@ -193,7 +211,7 @@ router.get("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (_req, res) =
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("ADMIN USERS LIST ERROR:", err);
-    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "Failed to load users" });
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load users" });
   }
 });
 
@@ -210,8 +228,12 @@ router.post("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) =
     if (!password) return res.status(400).json({ ok: false, error: "PASSWORD_REQUIRED" });
     if (!role) return res.status(400).json({ ok: false, error: "INVALID_ROLE" });
 
+    const cols = await getCloudUsersColumns();
+    const emailCol = cols.has("email");
     const existing = await pool.query(
-      `SELECT id FROM cloud_users WHERE LOWER(email) = $1 OR LOWER(username) = $1 LIMIT 1`,
+      emailCol
+        ? `SELECT id FROM cloud_users WHERE LOWER(email) = $1 OR LOWER(username) = $1 LIMIT 1`
+        : `SELECT id FROM cloud_users WHERE LOWER(username) = $1 LIMIT 1`,
       [email]
     );
     if (existing.rows.length) {
@@ -220,15 +242,30 @@ router.post("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) =
 
     const bcrypt = require("bcrypt");
     const hash = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      `
-      INSERT INTO cloud_users
-        (username, email, password_hash, full_name, role, is_active, created_by, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
+    const fields = ["username", "password_hash", "full_name", "role", "is_active", "created_at", "updated_at"];
+    const values = [email, hash, fullName, role, isActive, "NOW()", "NOW()"];
+    const params = [email, hash, fullName, role, isActive];
+    let placeholders = ["$1", "$2", "$3", "$4", "$5", "NOW()", "NOW()"];
+    let idx = 6;
+    if (emailCol) {
+      fields.splice(1, 0, "email");
+      values.splice(1, 0, email);
+      params.splice(1, 0, email);
+      placeholders = ["$1", "$2", "$3", "$4", "$5", "$6", "NOW()", "NOW()"];
+      idx = 7;
+    }
+    if (cols.has("created_by")) {
+      fields.splice(fields.length - 2, 0, "created_by");
+      params.push(req.admin?.user_id || null);
+      placeholders.splice(placeholders.length - 2, 0, `$${idx}`);
+      idx += 1;
+    }
+    const insertSql = `
+      INSERT INTO cloud_users (${fields.join(", ")})
+      VALUES (${placeholders.join(", ")})
       RETURNING id
-      `,
-      [email, email, hash, fullName, role, isActive, req.admin?.user_id || null]
-    );
+    `;
+    const result = await pool.query(insertSql, params);
     await logAdminUserAudit(req.admin, "ADMIN_USER_CREATED", result.rows[0]?.id, {
       email,
       role,
@@ -238,7 +275,7 @@ router.post("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) =
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("ADMIN USER CREATE ERROR:", err);
-    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "Failed to create user" });
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to create user" });
   }
 });
 
