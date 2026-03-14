@@ -135,10 +135,14 @@ exports.login = async (req, res) => {
         code: "INVALID_CREDENTIALS"
       });
     }
-    await pool.query(
-      `UPDATE cloud_users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1`,
-      [user.id]
-    );
+    if (cols.has("last_login_at")) {
+      await pool.query(
+        `UPDATE cloud_users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [user.id]
+      );
+    } else if (cols.has("updated_at")) {
+      await pool.query(`UPDATE cloud_users SET updated_at = NOW() WHERE id = $1`, [user.id]);
+    }
     const token = jwt.sign(
       {
         user_id: user.id,
