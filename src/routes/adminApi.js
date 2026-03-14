@@ -388,6 +388,23 @@ router.get("/payments", adminJwt, async (req, res) => {
   try {
     const status = String(req.query.status || "").trim();
     const q = String(req.query.q || "").trim();
+    const startDate = String(req.query.start_date || "").trim();
+    const endDate = String(req.query.end_date || "").trim();
+
+    let startTs = null;
+    let endTs = null;
+    if (startDate) {
+      const d = new Date(startDate + "T00:00:00Z");
+      if (!Number.isNaN(d.getTime())) startTs = d.toISOString();
+    }
+    if (endDate) {
+      const d = new Date(endDate + "T00:00:00Z");
+      if (!Number.isNaN(d.getTime())) {
+        d.setUTCDate(d.getUTCDate() + 1);
+        endTs = d.toISOString();
+      }
+    }
+
     const rows = await pool.query(
       `
       SELECT
@@ -406,20 +423,25 @@ router.get("/payments", adminJwt, async (req, res) => {
       FROM payment_transactions
       WHERE ($1 = '' OR match_status = $1)
         AND ($2 = '' OR txn_id ILIKE '%' || $2 || '%' OR payer_phone ILIKE '%' || $2 || '%')
+        AND ($3::timestamptz IS NULL OR imported_at >= $3::timestamptz)
+        AND ($4::timestamptz IS NULL OR imported_at < $4::timestamptz)
       ORDER BY imported_at DESC
       LIMIT 500
       `,
-      [status, q]
+      [status, q, startTs, endTs]
     );
     const summary = await pool.query(
       `
       SELECT
-        COUNT(*) FILTER (WHERE imported_at >= CURRENT_DATE) AS imported_today,
+        COUNT(*) AS imported,
         COUNT(*) FILTER (WHERE match_status = 'matched') AS matched,
         COUNT(*) FILTER (WHERE match_status = 'unmatched') AS unmatched,
         COUNT(*) FILTER (WHERE match_status = 'duplicate') AS duplicate
       FROM payment_transactions
-      `
+      WHERE ($1::timestamptz IS NULL OR imported_at >= $1::timestamptz)
+        AND ($2::timestamptz IS NULL OR imported_at < $2::timestamptz)
+      `,
+      [startTs, endTs]
     );
     return res.json({ ok: true, summary: summary.rows[0] || {}, rows: rows.rows || [] });
   } catch (err) {
@@ -428,7 +450,6 @@ router.get("/payments", adminJwt, async (req, res) => {
     return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load payments" });
   }
 });
-
 router.get("/payments/:id", adminJwt, async (req, res) => {
   try {
     const id = String(req.params.id || "").trim();

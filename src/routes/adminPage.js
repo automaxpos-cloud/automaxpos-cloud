@@ -319,11 +319,21 @@ router.get(
             <option value="duplicate">Duplicate</option>
             <option value="invalid">Invalid</option>
           </select>
+          <select id="payments_range" style="min-width:160px;">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last7">Last 7 Days</option>
+            <option value="month">This Month</option>
+            <option value="custom">Custom</option>
+          </select>
+          <input id="payments_from" type="date" style="min-width:150px;" />
+          <input id="payments_to" type="date" style="min-width:150px;" />
           <button class="btn" id="payments_refresh">Refresh</button>
           <div class="status-line" id="payments_status"></div>
         </div>
+        <div class="muted" id="payments_range_label" style="margin-top:6px;"></div>
         <div class="grid cards" style="margin-bottom:12px;">
-          <div class="card"><h3>Imported Today</h3><div class="value" id="pay_sum_today">--</div></div>
+          <div class="card"><h3>Imported</h3><div class="value" id="pay_sum_today">--</div></div>
           <div class="card"><h3>Matched</h3><div class="value" id="pay_sum_matched">--</div></div>
           <div class="card"><h3>Unmatched</h3><div class="value" id="pay_sum_unmatched">--</div></div>
           <div class="card"><h3>Duplicates</h3><div class="value" id="pay_sum_duplicate">--</div></div>
@@ -1142,16 +1152,46 @@ router.get(
       });
     }
 
+    function getDateValue(id) {
+      const el = byId(id);
+      return el && el.value ? String(el.value) : "";
+    }
+
+    function setRangeLabel(from, to, preset) {
+      const label = byId("payments_range_label");
+      if (!label) return;
+      if (preset && preset !== "custom") {
+        const pretty = preset === "today" ? "Today"
+          : preset === "yesterday" ? "Yesterday"
+          : preset === "last7" ? "Last 7 Days"
+          : preset === "month" ? "This Month"
+          : "Custom";
+        label.textContent = "Showing: " + pretty;
+        return;
+      }
+      if (from && to) {
+        label.textContent = "Showing payments from " + from + " to " + to;
+      } else if (from) {
+        label.textContent = "Showing payments from " + from;
+      } else if (to) {
+        label.textContent = "Showing payments up to " + to;
+      } else {
+        label.textContent = "";
+      }
+    }
+
     async function loadPayments(silent) {
       byId("payments_status").textContent = "Loading...";
       const status = byId("payments_status_filter")?.value || "";
       const q = byId("payments_search")?.value.trim() || "";
-      const url =
-        "/api/admin/payments" +
-        (status || q ? "?" : "") +
-        (status ? "status=" + encodeURIComponent(status) : "") +
-        (status && q ? "&" : "") +
-        (q ? "q=" + encodeURIComponent(q) : "");
+      const start = getDateValue("payments_from");
+      const end = getDateValue("payments_to");
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (q) params.set("q", q);
+      if (start) params.set("start_date", start);
+      if (end) params.set("end_date", end);
+      const url = "/api/admin/payments" + (params.toString() ? "?" + params.toString() : "");
       const res = await fetch(url, { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -1161,7 +1201,7 @@ router.get(
         return;
       }
       const summary = data.summary || {};
-      byId("pay_sum_today").textContent = summary.imported_today ?? 0;
+      byId("pay_sum_today").textContent = summary.imported ?? 0;
       byId("pay_sum_matched").textContent = summary.matched ?? 0;
       byId("pay_sum_unmatched").textContent = summary.unmatched ?? 0;
       byId("pay_sum_duplicate").textContent = summary.duplicate ?? 0;
