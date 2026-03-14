@@ -1581,10 +1581,40 @@ router.get("/", (req, res) => {
       state.user = data.user || null;
     }
 
-    function setActiveNav(id) {
+    
+    function applyNavStyles(btn, isActive) {
+      if (!btn) return;
+      btn.style.background = isActive ? "var(--accent)" : "#1f2a40";
+      btn.style.borderColor = isActive ? "var(--accent)" : "var(--border)";
+      btn.style.color = "#fff";
+    }
+
+    function wireNavHover(btn) {
+      if (!btn) return;
+      btn.addEventListener("mouseenter", () => {
+        if (!btn.classList.contains("active")) {
+          btn.style.borderColor = "var(--accent)";
+        }
+      });
+      btn.addEventListener("mouseleave", () => {
+        if (!btn.classList.contains("active")) {
+          btn.style.borderColor = "var(--border)";
+        }
+      });
+    }
+
+function setActiveNav(id) {
   const ids = ["nav-dashboard", "nav-monitoring", "nav-users", "nav-licenses"];
-  ids.forEach((k) => byId(k)?.classList.remove("active"));
-  if (id) byId(id)?.classList.add("active");
+  ids.forEach((k) => {
+    const btn = byId(k);
+    if (btn) btn.classList.remove("active");
+    applyNavStyles(btn, false);
+  });
+  if (id) {
+    const btn = byId(id);
+    if (btn) btn.classList.add("active");
+    applyNavStyles(btn, true);
+  }
 }
 
 function showSection(name) {
@@ -2336,6 +2366,12 @@ function showSection(name) {
         await loadCurrentLicenseForRequest();
         await loadLicenseRequests();
       });
+      wireNavHover(byId("nav-dashboard"));
+      wireNavHover(byId("nav-monitoring"));
+      wireNavHover(byId("nav-users"));
+      wireNavHover(byId("nav-licenses"));
+      wireNavHover(byId("export_pdf_btn"));
+      wireNavHover(byId("export_xlsx_btn"));
       bind("export_pdf_btn", "click", exportDailyPdf);
       bind("export_xlsx_btn", "click", exportExcel);
       bind("user_business", "change", loadUserBranches);
