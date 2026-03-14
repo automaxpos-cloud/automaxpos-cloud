@@ -1858,7 +1858,7 @@ let activeRequestId = null;
     function issuedByDisplay(r) {
       const value = r.issued_by_display || r.issued_by_name || r.issued_by_email;
       if (value) return value;
-      return `<span title="Created before admin audit tracking was introduced">Legacy Import</span>`;
+      return '<span title="Created before admin audit tracking was introduced">Legacy Import</span>';
     }
 
     function manualChangeReason(issueType) {
