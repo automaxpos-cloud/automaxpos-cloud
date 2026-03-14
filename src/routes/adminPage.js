@@ -1756,7 +1756,8 @@ let activeRequestId = null;
             { label: "Imported At", value: r.imported_at },
             { label: "Notes", value: r.notes || "-" },
             { label: "Raw Subject", value: r.raw_subject || "-" },
-            { label: "Raw Body", value: r.raw_body || "-" }
+            { label: "Sanitized SMS", value: r.sanitized_body || "-" },
+            ...(r.allow_raw ? [{ label: "Raw Body", value: r.raw_body || "-" }] : [])
           ]);
         }
         if (btn.dataset.action === "rematch") {

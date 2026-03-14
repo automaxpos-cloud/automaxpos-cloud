@@ -484,7 +484,22 @@ router.get("/payments/:id", adminJwt, async (req, res) => {
       [id]
     );
     if (!rows.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
-    return res.json({ ok: true, row: rows.rows[0] });
+    const row = rows.rows[0];
+    const isSuper = String(req.admin?.role || "").toUpperCase() === "SUPER_ADMIN";
+    const rawBody = String(row.raw_body || "");
+    const sanitized = rawBody
+      .replace(/\\bBal(?:ance)?\\s+[A-Z]{0,3}\\s*[0-9.,]+\\b/gi, "")
+      .replace(/\\bComm(?:ission)?\\s+[A-Z]{0,3}\\s*[0-9.,]+\\b/gi, "")
+      .replace(/\\s{2,}/g, " ")
+      .replace(/\\s+\\.\\s+/g, ". ")
+      .trim();
+    const safeRow = {
+      ...row,
+      sanitized_body: sanitized || null,
+      raw_body: isSuper ? row.raw_body : null,
+      allow_raw: isSuper
+    };
+    return res.json({ ok: true, row: safeRow });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("ADMIN PAYMENT DETAIL ERROR:", err?.message || err, err?.stack || "");
