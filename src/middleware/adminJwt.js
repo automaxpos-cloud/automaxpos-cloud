@@ -23,7 +23,15 @@ function adminJwt(req, res, next) {
   try {
     const payload = jwt.verify(token, secret);
     const role = String(payload?.role || "").toUpperCase();
-    const allowed = new Set(["SUPER_ADMIN", "SUPERADMIN", "LICENSING_ADMIN", "SUPPORT_ADMIN"]);
+    const allowed = new Set([
+      "SUPER_ADMIN",
+      "SUPERADMIN",
+      "ADMIN",
+      "SUPPORT",
+      "VIEWER",
+      "LICENSING_ADMIN",
+      "SUPPORT_ADMIN"
+    ]);
     if (!payload || !allowed.has(role)) {
       return res.status(403).json({
         ok: false,

@@ -4,6 +4,7 @@ const { pool } = require("../db/pool");
 
 exports.login = async (req, res) => {
   const { username, password } = req.body || {};
+  const loginId = String(username || "").trim().toLowerCase();
   const adminUser = process.env.SUPERADMIN_USERNAME || process.env.OWNER_EMAIL;
   const adminHash = process.env.SUPERADMIN_PASSWORD_HASH || process.env.OWNER_PASSWORD_HASH;
   const secret = process.env.JWT_SECRET;
@@ -16,7 +17,7 @@ exports.login = async (req, res) => {
     });
   }
 
-  if (!username || !password) {
+  if (!loginId || !password) {
     return res.status(400).json({
       ok: false,
       message: "username and password required",
@@ -49,10 +50,11 @@ exports.login = async (req, res) => {
   // 2) cloud_users table
   try {
     const result = await pool.query(
-      `SELECT id, username, password_hash, role, business_id, branch_id, is_active
+      `SELECT id, username, email, password_hash, role, business_id, branch_id, is_active
        FROM cloud_users
-       WHERE username = $1`,
-      [String(username).trim()]
+       WHERE LOWER(username) = $1 OR LOWER(email) = $1
+       LIMIT 1`,
+      [loginId]
     );
     const user = result.rows[0];
     if (!user || !user.is_active) {
@@ -70,10 +72,15 @@ exports.login = async (req, res) => {
         code: "INVALID_CREDENTIALS"
       });
     }
+    await pool.query(
+      `UPDATE cloud_users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [user.id]
+    );
     const token = jwt.sign(
       {
         user_id: user.id,
         username: user.username,
+        email: user.email,
         role: user.role,
         business_id: user.business_id,
         branch_id: user.branch_id,

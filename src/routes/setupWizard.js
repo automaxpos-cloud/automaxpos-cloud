@@ -114,10 +114,10 @@ router.post("/bootstrap", async (req, res) => {
       console.log("[SETUP] creating first user");
       const u = await client.query(
         `INSERT INTO cloud_users
-         (username, password_hash, full_name, role, business_id, branch_id, is_active)
+         (username, email, password_hash, full_name, role, business_id, branch_id, is_active)
          VALUES ($1,$2,$3,'BUSINESS_OWNER',$4,$5,TRUE)
          RETURNING id`,
-        [String(username).trim(), hash, String(admin_full_name).trim(), businessId, branchId]
+        [String(username).trim(), email ? String(email).trim().toLowerCase() : null, hash, String(admin_full_name).trim(), businessId, branchId]
       );
 
       await client.query("COMMIT");

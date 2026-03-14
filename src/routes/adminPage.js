@@ -14,7 +14,8 @@ router.get(
     "/automax-pos/backends",
     "/automax-pos/businesses",
     "/automax-pos/sync",
-    "/settings"
+    "/settings",
+    "/admin-users"
   ],
   (_req, res) => {
   res.type("html").send(`<!doctype html>
@@ -195,6 +196,7 @@ router.get(
     .badge-license-expired { color: var(--bad); background: rgba(239,68,68,0.15); }
     .badge-license-revoked { color: var(--neutral); background: rgba(148,163,184,0.15); }
     .badge-license-pending { color: var(--warn); background: rgba(250,204,21,0.15); }
+    .badge-role { color: var(--accent); background: rgba(46,120,255,0.15); }
     .hidden { display: none; }
     .toast {
       position: fixed;
@@ -256,6 +258,7 @@ router.get(
         <a href="/jpmax-admin/automax-pos/businesses" id="nav-businesses">Business Owners</a>
         <a href="/jpmax-admin/automax-pos/sync" id="nav-sync">Sync Monitoring</a>
         <a href="/jpmax-admin/settings" id="nav-settings">Platform Settings</a>
+        <a href="/jpmax-admin/admin-users" id="nav-admin-users" class="hidden">Admin Users</a>
       </nav>
       <div class="card" id="login-card" style="margin-top:18px;">
         <div class="muted" style="margin-bottom:6px;">Admin Login</div>
@@ -720,6 +723,74 @@ router.get(
           </div>
         </div>
       </section>
+
+      <section id="section-admin-users" class="hidden">
+        <h1>Admin Users</h1>
+        <div class="muted">SUPER_ADMIN only.</div>
+        <div class="card" style="margin-top:10px;">
+          <div class="row">
+            <div>
+              <label class="muted">Full Name</label>
+              <input id="admin_user_full_name" type="text" placeholder="Full name" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Email</label>
+              <input id="admin_user_email" type="email" placeholder="email@example.com" style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Role</label>
+              <select id="admin_user_role" style="width:100%;">
+                <option value="">Select role</option>
+                <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                <option value="ADMIN">ADMIN</option>
+                <option value="SUPPORT">SUPPORT</option>
+                <option value="VIEWER">VIEWER</option>
+              </select>
+            </div>
+            <div style="min-width:120px;">
+              <label class="muted">Active</label>
+              <select id="admin_user_active" style="width:100%;">
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <div style="flex:1;">
+              <label class="muted">Password</label>
+              <input id="admin_user_password" type="password" placeholder="Set password" style="width:100%;" />
+            </div>
+            <div style="flex:1;">
+              <label class="muted">Confirm Password</label>
+              <input id="admin_user_password2" type="password" placeholder="Confirm password" style="width:100%;" />
+            </div>
+            <div style="display:flex; align-items:flex-end; gap:8px;">
+              <button class="btn" id="admin_user_clear" type="button">Clear</button>
+              <button class="btn primary" id="admin_user_save" type="button">Create User</button>
+            </div>
+          </div>
+          <div class="muted" id="admin_user_status" style="margin-top:8px;"></div>
+        </div>
+        <div class="toolbar">
+          <button class="btn" id="admin_users_refresh">Refresh</button>
+          <div class="status-line" id="admin_users_status"></div>
+        </div>
+        <div id="admin_users_empty" class="empty hidden">No admin users found.</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Last Login</th>
+              <th>Created At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="admin_users_body"></tbody>
+        </table>
+      </section>
     </main>
   </div>
 
@@ -794,6 +865,9 @@ router.get(
       document.body.style.overflow = "";
     }
 let activeRequestId = null;
+    let currentAdminRole = null;
+    let adminUsersMap = new Map();
+    let editingAdminUserId = null;
     let requestMap = new Map();
     let licenseMap = new Map();
     let backendMap = new Map();
@@ -826,7 +900,8 @@ let activeRequestId = null;
         "/jpmax-admin/automax-pos/backends": "nav-backends",
         "/jpmax-admin/automax-pos/businesses": "nav-businesses",
         "/jpmax-admin/automax-pos/sync": "nav-sync",
-        "/jpmax-admin/settings": "nav-settings"
+        "/jpmax-admin/settings": "nav-settings",
+        "/jpmax-admin/admin-users": "nav-admin-users"
       };
       Object.values(map).forEach((id) => byId(id)?.classList.remove("active"));
       const active = map[path] || "nav-portal";
@@ -835,7 +910,7 @@ let activeRequestId = null;
 
     function showSection() {
       const path = window.location.pathname;
-      const sections = ["portal", "overview", "payments", "requests", "issued", "manual", "activations", "demos", "backends", "businesses", "sync", "settings"];
+      const sections = ["portal", "overview", "payments", "requests", "issued", "manual", "activations", "demos", "backends", "businesses", "sync", "settings", "admin-users"];
       sections.forEach((s) => byId("section-" + s)?.classList.add("hidden"));
       if (path.endsWith("/automax-pos")) return byId("section-overview")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/payments")) return byId("section-payments")?.classList.remove("hidden");
@@ -848,11 +923,25 @@ let activeRequestId = null;
       if (path.endsWith("/automax-pos/businesses")) return byId("section-businesses")?.classList.remove("hidden");
       if (path.endsWith("/automax-pos/sync")) return byId("section-sync")?.classList.remove("hidden");
       if (path.endsWith("/settings")) return byId("section-settings")?.classList.remove("hidden");
+      if (path.endsWith("/admin-users")) {
+        if (isSuperAdmin()) return byId("section-admin-users")?.classList.remove("hidden");
+        return byId("section-portal")?.classList.remove("hidden");
+      }
       byId("section-portal")?.classList.remove("hidden");
     }
 
     function badge(text, cls) {
       return '<span class="status ' + cls + '">' + text + "</span>";
+    }
+
+    function isSuperAdmin() {
+      return String(currentAdminRole || "").toUpperCase() === "SUPER_ADMIN";
+    }
+
+    function updateAdminNavVisibility() {
+      const nav = byId("nav-admin-users");
+      if (!nav) return;
+      nav.classList.toggle("hidden", !isSuperAdmin());
     }
 
     function statusBadge(status) {
@@ -963,8 +1052,13 @@ let activeRequestId = null;
       byId("account-card")?.classList.toggle("hidden", !isLoggedIn);
       if (isLoggedIn) {
         const role = data?.role || data?.user?.role || "SUPERADMIN";
+        currentAdminRole = role === "SUPERADMIN" ? "SUPER_ADMIN" : role;
         byId("account-text").textContent =
           "Logged in as: " + (data?.username || data?.user?.username || "admin") + " (" + role + ")";
+        updateAdminNavVisibility();
+      } else {
+        currentAdminRole = null;
+        updateAdminNavVisibility();
       }
     }
 
@@ -1572,6 +1666,72 @@ let activeRequestId = null;
       setToast("Settings saved.", "var(--good)");
     }
 
+    function clearAdminUserForm() {
+      editingAdminUserId = null;
+      byId("admin_user_full_name").value = "";
+      byId("admin_user_email").value = "";
+      byId("admin_user_role").value = "";
+      byId("admin_user_active").value = "true";
+      byId("admin_user_password").value = "";
+      byId("admin_user_password2").value = "";
+      byId("admin_user_save").textContent = "Create User";
+      byId("admin_user_status").textContent = "";
+    }
+
+    function fillAdminUserForm(u) {
+      editingAdminUserId = u.id;
+      byId("admin_user_full_name").value = u.full_name || "";
+      byId("admin_user_email").value = u.email || u.username || "";
+      byId("admin_user_role").value = (u.role || "").toUpperCase() === "SUPERADMIN" ? "SUPER_ADMIN" : u.role || "";
+      byId("admin_user_active").value = u.is_active === false ? "false" : "true";
+      byId("admin_user_password").value = "";
+      byId("admin_user_password2").value = "";
+      byId("admin_user_save").textContent = "Update User";
+      byId("admin_user_status").textContent = "Editing user " + (u.email || u.username || "");
+    }
+
+    async function loadAdminUsers(silent) {
+      if (!isSuperAdmin()) return;
+      byId("admin_users_status").textContent = "Loading...";
+      const res = await fetch("/api/admin/users", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.message || data?.error || "Failed to load admin users.";
+        byId("admin_users_status").textContent = msg;
+        if (!silent) setToast(msg, "var(--bad)");
+        return;
+      }
+      const rows = data.rows || [];
+      adminUsersMap = new Map(rows.map((r) => [String(r.id), r]));
+      byId("admin_users_status").textContent = rows.length + " users";
+      byId("admin_users_empty").classList.toggle("hidden", rows.length > 0);
+      const body = byId("admin_users_body");
+      body.innerHTML = "";
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        const active = r.is_active !== false;
+        const status = active ? badge("ACTIVE", "badge-active") : badge("INACTIVE", "badge-revoked");
+        const role = String(r.role || "").toUpperCase() === "SUPERADMIN" ? "SUPER_ADMIN" : r.role || "-";
+        const roleBadge = badge(role, "badge-role");
+        const lastLogin = r.last_login_at ? new Date(r.last_login_at).toLocaleString() : "-";
+        const createdAt = r.created_at ? new Date(r.created_at).toLocaleString() : "-";
+        tr.innerHTML =
+          "<td>" + (r.full_name || "-") + "</td>" +
+          "<td>" + (r.email || r.username || "-") + "</td>" +
+          "<td>" + roleBadge + "</td>" +
+          "<td>" + status + "</td>" +
+          "<td>" + lastLogin + "</td>" +
+          "<td>" + createdAt + "</td>" +
+          "<td>" +
+            "<button class='btn' data-action='edit' data-id='" + r.id + "'>Edit</button> " +
+            "<button class='btn' data-action='reset' data-id='" + r.id + "'>Reset Password</button> " +
+            "<button class='btn' data-action='" + (active ? "revoke" : "activate") + "' data-id='" + r.id + "'>" + (active ? "Deactivate" : "Activate") + "</button> " +
+            "<button class='btn' data-action='delete' data-id='" + r.id + "'>Delete</button>" +
+          "</td>";
+        body.appendChild(tr);
+      });
+    }
+
     function manualChangeReason(issueType) {
       const t = String(issueType || "").toLowerCase();
       if (t === "renewal") return "renewal";
@@ -1638,6 +1798,9 @@ let activeRequestId = null;
         loadSyncMonitor(true),
         loadPlatformSettings(true)
       ]);
+      if (isSuperAdmin()) {
+        await loadAdminUsers(true);
+      }
       updateManualDerived();
     }
 
@@ -1959,6 +2122,7 @@ let activeRequestId = null;
       showSection();
       bindTableActions();
       bindPaymentModal();
+      updateAdminNavVisibility();
 
       const themeBtn = byId("themeToggle");
       if (themeBtn) {
@@ -1991,12 +2155,114 @@ let activeRequestId = null;
         applyPaymentsRange(byId("payments_range")?.value || "today");
         loadPayments();
       });
+
+      byId("admin_users_body")?.addEventListener("click", async (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        if (!isSuperAdmin()) return setToast("SUPER_ADMIN only.", "var(--warn)");
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+        const user = adminUsersMap.get(String(id));
+        if (!user) return;
+        if (action === "edit") {
+          fillAdminUserForm(user);
+          return;
+        }
+        if (action === "reset") {
+          const pw = window.prompt("Enter new password for " + (user.email || user.username || ""));
+          if (!pw) return;
+          const res = await fetch("/api/admin/users/" + id + "/reset-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ password: pw })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return setToast(data?.message || data?.error || "Reset failed.", "var(--bad)");
+          setToast("Password reset.", "var(--good)");
+          return;
+        }
+        if (action === "revoke") {
+          const res = await fetch("/api/admin/users/" + id + "/revoke", { method: "POST", headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return setToast(data?.message || data?.error || "Deactivate failed.", "var(--bad)");
+          setToast("User deactivated.", "var(--warn)");
+          await loadAdminUsers();
+          return;
+        }
+        if (action === "activate") {
+          const res = await fetch("/api/admin/users/" + id + "/activate", { method: "POST", headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return setToast(data?.message || data?.error || "Activate failed.", "var(--bad)");
+          setToast("User activated.", "var(--good)");
+          await loadAdminUsers();
+          return;
+        }
+        if (action === "delete") {
+          if (!window.confirm("Delete this admin user?")) return;
+          const res = await fetch("/api/admin/users/" + id, { method: "DELETE", headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) return setToast(data?.message || data?.error || "Delete failed.", "var(--bad)");
+          setToast("User deleted.", "var(--warn)");
+          await loadAdminUsers();
+        }
+      });
       byId("payments_search").addEventListener("input", () => {
         clearTimeout(window.__payTimer);
         window.__payTimer = setTimeout(loadPayments, 300);
       });
       byId("sync_refresh").addEventListener("click", loadSyncMonitor);
       byId("settings_save").addEventListener("click", savePlatformSettings);
+      byId("admin_users_refresh")?.addEventListener("click", loadAdminUsers);
+      byId("admin_user_clear")?.addEventListener("click", clearAdminUserForm);
+      byId("admin_user_save")?.addEventListener("click", async () => {
+        if (!isSuperAdmin()) return setToast("SUPER_ADMIN only.", "var(--warn)");
+        const fullName = byId("admin_user_full_name").value.trim();
+        const email = byId("admin_user_email").value.trim().toLowerCase();
+        const role = byId("admin_user_role").value;
+        const isActive = byId("admin_user_active").value === "true";
+        const pass = byId("admin_user_password").value;
+        const pass2 = byId("admin_user_password2").value;
+        if (!fullName || !email || !role) {
+          byId("admin_user_status").textContent = "Full name, email, and role are required.";
+          return;
+        }
+        if (!editingAdminUserId) {
+          if (!pass || pass !== pass2) {
+            byId("admin_user_status").textContent = "Passwords do not match or are empty.";
+            return;
+          }
+        }
+        if (editingAdminUserId) {
+          const res = await fetch("/api/admin/users/" + editingAdminUserId, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ full_name: fullName, email, role, is_active: isActive })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            byId("admin_user_status").textContent = data?.message || data?.error || "Update failed.";
+            return;
+          }
+          setToast("User updated.", "var(--good)");
+          clearAdminUserForm();
+          await loadAdminUsers();
+          return;
+        }
+
+        const res = await fetch("/api/admin/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ full_name: fullName, email, password: pass, role, is_active: isActive })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          byId("admin_user_status").textContent = data?.message || data?.error || "Create failed.";
+          return;
+        }
+        setToast("User created.", "var(--good)");
+        clearAdminUserForm();
+        await loadAdminUsers();
+      });
       byId("manual_refresh").addEventListener("click", async () => {
         await loadBusinesses();
         await loadBackendsCatalog();

@@ -6,6 +6,8 @@ const { matchPaymentTransaction } = require("../services/paymentMatchService");
 
 const router = express.Router();
 
+const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "SUPPORT", "VIEWER"]);
+
 function normalizePaymentStatus(value) {
   const raw = String(value || "").trim().toUpperCase();
   const allowed = new Set(["PENDING", "PAID", "PARTIAL", "WAIVED", "REFUNDED"]);
@@ -60,6 +62,49 @@ function requireRole(allowed) {
   };
 }
 
+function normalizeAdminRole(role) {
+  const raw = String(role || "").trim().toUpperCase();
+  if (raw === "SUPERADMIN") return "SUPER_ADMIN";
+  return ADMIN_ROLES.has(raw) ? raw : null;
+}
+
+async function logAdminUserAudit(admin, action, targetUserId, details) {
+  try {
+    await pool.query(
+      `INSERT INTO cloud_audit_logs (actor_user_id, actor_username, action, entity_type, entity_id, details_json)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [
+        admin?.user_id || null,
+        admin?.username || null,
+        action,
+        "cloud_users",
+        targetUserId || null,
+        details ? JSON.stringify(details) : null
+      ]
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("ADMIN USER AUDIT ERROR:", err?.message || err);
+  }
+}
+
+async function countActiveSuperAdmins(excludeId) {
+  const rows = await pool.query(
+    `SELECT COUNT(*) AS c
+     FROM cloud_users
+     WHERE UPPER(role) IN ('SUPER_ADMIN','SUPERADMIN')
+       AND COALESCE(is_active, TRUE) = TRUE
+       AND ($1::uuid IS NULL OR id <> $1::uuid)`,
+    [excludeId || null]
+  );
+  return Number(rows.rows[0]?.c || 0);
+}
+
+async function ensureNotLastSuperAdmin(targetId) {
+  const remaining = await countActiveSuperAdmins(targetId);
+  return remaining > 0;
+}
+
 router.get("/summary", adminJwt, async (_req, res) => {
   try {
     const pendingReq = await pool.query(
@@ -101,6 +146,262 @@ router.get("/summary", adminJwt, async (_req, res) => {
 
 router.get("/me", adminJwt, (req, res) => {
   return res.json({ ok: true, admin: req.admin || null });
+});
+
+router.get("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (_req, res) => {
+  try {
+    const rows = await pool.query(
+      `
+      SELECT
+        u.id,
+        u.full_name,
+        u.username,
+        u.email,
+        u.role,
+        u.is_active,
+        u.created_at,
+        u.updated_at,
+        u.created_by,
+        u.revoked_at,
+        u.revoked_by,
+        u.last_login_at,
+        cu.username AS created_by_username,
+        ru.username AS revoked_by_username
+      FROM cloud_users u
+      LEFT JOIN cloud_users cu ON cu.id = u.created_by
+      LEFT JOIN cloud_users ru ON ru.id = u.revoked_by
+      WHERE UPPER(u.role) IN ('SUPER_ADMIN','SUPERADMIN','ADMIN','SUPPORT','VIEWER')
+      ORDER BY u.created_at DESC
+      `
+    );
+    return res.json({ ok: true, rows: rows.rows || [] });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN USERS LIST ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "Failed to load users" });
+  }
+});
+
+router.post("/users", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) => {
+  try {
+    const fullName = String(req.body?.full_name || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const password = String(req.body?.password || "");
+    const role = normalizeAdminRole(req.body?.role);
+    const isActive = req.body?.is_active !== false;
+
+    if (!fullName) return res.status(400).json({ ok: false, error: "FULL_NAME_REQUIRED" });
+    if (!email) return res.status(400).json({ ok: false, error: "EMAIL_REQUIRED" });
+    if (!password) return res.status(400).json({ ok: false, error: "PASSWORD_REQUIRED" });
+    if (!role) return res.status(400).json({ ok: false, error: "INVALID_ROLE" });
+
+    const existing = await pool.query(
+      `SELECT id FROM cloud_users WHERE LOWER(email) = $1 OR LOWER(username) = $1 LIMIT 1`,
+      [email]
+    );
+    if (existing.rows.length) {
+      return res.status(400).json({ ok: false, error: "DUPLICATE_EMAIL", message: "Email already exists" });
+    }
+
+    const bcrypt = require("bcrypt");
+    const hash = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      `
+      INSERT INTO cloud_users
+        (username, email, password_hash, full_name, role, is_active, created_by, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
+      RETURNING id
+      `,
+      [email, email, hash, fullName, role, isActive, req.admin?.user_id || null]
+    );
+    await logAdminUserAudit(req.admin, "ADMIN_USER_CREATED", result.rows[0]?.id, {
+      email,
+      role,
+      is_active: isActive
+    });
+    return res.json({ ok: true, id: result.rows[0]?.id || null });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN USER CREATE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "Failed to create user" });
+  }
+});
+
+router.patch("/users/:id", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+
+    const existing = await pool.query(
+      `SELECT id, email, role, is_active FROM cloud_users WHERE id=$1`,
+      [id]
+    );
+    if (!existing.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    const current = existing.rows[0];
+
+    const fullName = req.body?.full_name != null ? String(req.body.full_name || "").trim() : null;
+    const email = req.body?.email != null ? String(req.body.email || "").trim().toLowerCase() : null;
+    const role = req.body?.role != null ? normalizeAdminRole(req.body.role) : null;
+    const isActive = typeof req.body?.is_active === "boolean" ? req.body.is_active : null;
+
+    if (req.body?.role != null && !role) {
+      return res.status(400).json({ ok: false, error: "INVALID_ROLE" });
+    }
+    if (email) {
+      const dup = await pool.query(
+        `SELECT id FROM cloud_users WHERE LOWER(email) = $1 AND id <> $2 LIMIT 1`,
+        [email, id]
+      );
+      if (dup.rows.length) {
+        return res.status(400).json({ ok: false, error: "DUPLICATE_EMAIL", message: "Email already exists" });
+      }
+    }
+
+    const currentRole = normalizeAdminRole(current.role) || String(current.role || "").toUpperCase();
+    const nextRole = role || currentRole;
+    const nextActive = isActive != null ? isActive : current.is_active !== false;
+
+    if (currentRole === "SUPER_ADMIN" && (!nextActive || nextRole !== "SUPER_ADMIN")) {
+      const ok = await ensureNotLastSuperAdmin(id);
+      if (!ok) {
+        return res.status(400).json({
+          ok: false,
+          error: "LAST_SUPER_ADMIN",
+          message: "Cannot revoke or demote the last active SUPER_ADMIN."
+        });
+      }
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE cloud_users
+      SET full_name = COALESCE($1, full_name),
+          email = COALESCE($2, email),
+          username = COALESCE($2, username),
+          role = $3,
+          is_active = COALESCE($4, is_active),
+          revoked_at = CASE WHEN $4 = FALSE THEN NOW() ELSE revoked_at END,
+          revoked_by = CASE WHEN $4 = FALSE THEN $5 ELSE revoked_by END,
+          updated_at = NOW()
+      WHERE id = $6
+      RETURNING id, role, is_active
+      `,
+      [
+        fullName,
+        email,
+        nextRole,
+        isActive,
+        isActive === false ? (req.admin?.user_id || null) : null,
+        id
+      ]
+    );
+    await logAdminUserAudit(req.admin, "ADMIN_USER_UPDATED", id, {
+      role: nextRole,
+      is_active: result.rows[0]?.is_active
+    });
+    return res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN USER UPDATE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "Failed to update user" });
+  }
+});
+
+router.post("/users/:id/reset-password", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    const password = String(req.body?.password || "");
+    if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+    if (!password) return res.status(400).json({ ok: false, error: "PASSWORD_REQUIRED" });
+
+    const bcrypt = require("bcrypt");
+    const hash = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      `UPDATE cloud_users SET password_hash=$1, updated_at=NOW() WHERE id=$2 RETURNING id`,
+      [hash, id]
+    );
+    if (!result.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    await logAdminUserAudit(req.admin, "ADMIN_USER_PASSWORD_RESET", id, {});
+    return res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN USER RESET ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: "Failed to reset password" });
+  }
+});
+
+router.post("/users/:id/revoke", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+
+    const existing = await pool.query(`SELECT role FROM cloud_users WHERE id=$1`, [id]);
+    if (!existing.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    const role = normalizeAdminRole(existing.rows[0].role) || String(existing.rows[0].role || "").toUpperCase();
+    if (role === "SUPER_ADMIN") {
+      const ok = await ensureNotLastSuperAdmin(id);
+      if (!ok) {
+        return res.status(400).json({ ok: false, error: "LAST_SUPER_ADMIN" });
+      }
+    }
+
+    await pool.query(
+      `UPDATE cloud_users
+       SET is_active=FALSE, revoked_at=NOW(), revoked_by=$2, updated_at=NOW()
+       WHERE id=$1`,
+      [id, req.admin?.user_id || null]
+    );
+    await logAdminUserAudit(req.admin, "ADMIN_USER_REVOKED", id, {});
+    return res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN USER REVOKE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.post("/users/:id/activate", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+    await pool.query(
+      `UPDATE cloud_users
+       SET is_active=TRUE, revoked_at=NULL, revoked_by=NULL, updated_at=NOW()
+       WHERE id=$1`,
+      [id]
+    );
+    await logAdminUserAudit(req.admin, "ADMIN_USER_ACTIVATED", id, {});
+    return res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN USER ACTIVATE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.delete("/users/:id", adminJwt, requireRole(["SUPER_ADMIN"]), async (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+
+    const existing = await pool.query(`SELECT role FROM cloud_users WHERE id=$1`, [id]);
+    if (!existing.rows.length) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    const role = normalizeAdminRole(existing.rows[0].role) || String(existing.rows[0].role || "").toUpperCase();
+    if (role === "SUPER_ADMIN") {
+      const ok = await ensureNotLastSuperAdmin(id);
+      if (!ok) {
+        return res.status(400).json({ ok: false, error: "LAST_SUPER_ADMIN" });
+      }
+    }
+
+    await pool.query(`DELETE FROM cloud_users WHERE id=$1`, [id]);
+    await logAdminUserAudit(req.admin, "ADMIN_USER_DELETED", id, {});
+    return res.json({ ok: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ADMIN USER DELETE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
 });
 
 router.get("/license-requests", adminJwt, async (req, res) => {
