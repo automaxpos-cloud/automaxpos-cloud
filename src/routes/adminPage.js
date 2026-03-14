@@ -546,6 +546,8 @@ router.get(
               <th>Business</th>
               <th>Plan</th>
               <th>Device Limit</th>
+              <th>Issued By</th>
+              <th>Issued At</th>
               <th>Expires At</th>
               <th>Status</th>
               <th>Actions</th>
@@ -1439,12 +1441,15 @@ let activeRequestId = null;
       byId("manual_empty").classList.toggle("hidden", (data.rows || []).length > 0);
       (data.rows || []).forEach((r) => {
         const tr = document.createElement("tr");
+        const issuedBy = r.issued_by_display || r.issued_by_name || r.issued_by_email || "Legacy Record";
         tr.innerHTML =
           "<td>" + (r.license_id || "-") + "</td>" +
           "<td>" + (r.backend_id || "-") + "</td>" +
           "<td>" + (r.business_name || "-") + "</td>" +
           "<td>" + (r.plan_name || r.plan || "-") + "</td>" +
           "<td>" + formatDeviceLimit(r.device_limit) + "</td>" +
+          "<td>" + issuedBy + "</td>" +
+          "<td>" + (r.issued_at ? new Date(r.issued_at).toLocaleDateString() : "-") + "</td>" +
           "<td>" + (r.expires_at ? new Date(r.expires_at).toLocaleDateString() : "-") + "</td>" +
           "<td>" + statusBadge(r.status) + "</td>" +
           "<td>" +
