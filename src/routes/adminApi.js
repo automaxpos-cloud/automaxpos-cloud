@@ -866,6 +866,10 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
 
   router.get("/licenses", adminJwt, async (_req, res) => {
     try {
+      const exists = await pool.query(`SELECT to_regclass('public.backend_licenses') AS t`);
+      if (!exists.rows[0]?.t) {
+        return res.json({ ok: true, rows: [], missing: "backend_licenses" });
+      }
       const cols = await getBackendLicensesColumns();
       const rows = await pool.query(
         `
@@ -929,7 +933,7 @@ router.post("/payments/:id/rematch", adminJwt, async (req, res) => {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("ADMIN LICENSES ERROR:", err);
-      return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+      return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to load licenses" });
     }
   });
 
