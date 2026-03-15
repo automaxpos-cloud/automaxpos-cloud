@@ -600,7 +600,7 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.notes,
         COALESCE(lr.machine_id, bd.machine_id) AS machine_id,
         COALESCE(lr.device_id, bd.installation_id::text) AS device_id,
-        lr.backend_id,
+        COALESCE(lr.backend_id, bd.id::text) AS backend_id,
         bd.backend_name,
         lr.business_id,
         lr.branch_id,
@@ -622,7 +622,17 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.location,
         lr.address
       FROM license_requests lr
-      LEFT JOIN backend_devices bd ON bd.id::text = lr.backend_id
+      LEFT JOIN LATERAL (
+        SELECT bd.*
+        FROM backend_devices bd
+        WHERE (lr.backend_id IS NOT NULL AND bd.id::text = lr.backend_id)
+           OR (lr.backend_id IS NULL AND lr.machine_id IS NOT NULL AND bd.machine_id = lr.machine_id)
+        ORDER BY
+          CASE WHEN lr.backend_id IS NOT NULL AND bd.id::text = lr.backend_id THEN 0 ELSE 1 END,
+          bd.last_seen_at DESC NULLS LAST,
+          bd.created_at DESC
+        LIMIT 1
+      ) bd ON TRUE
       LEFT JOIN businesses b ON b.id::text = lr.business_id
       LEFT JOIN branches br ON br.id::text = lr.branch_id
       WHERE (
