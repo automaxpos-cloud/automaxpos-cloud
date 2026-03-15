@@ -592,6 +592,10 @@ router.get("/", (req, res) => {
             <select id="license_backend" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);"></select>
           </div>
           <div style="min-width:260px;">
+            <label class="muted">Backend Name</label>
+            <input id="license_backend_name" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
+          <div style="min-width:260px;">
             <label class="muted">Backend ID</label>
             <input id="license_backend_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
@@ -600,12 +604,20 @@ router.get("/", (req, res) => {
             <input id="license_machine_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
           <div style="min-width:260px;">
+            <label class="muted">Device ID</label>
+            <input id="license_device_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
+          <div style="min-width:260px;">
             <label class="muted">Business ID</label>
             <input id="license_business_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
           <div style="min-width:260px;">
             <label class="muted">Branch ID</label>
             <input id="license_branch_id" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
+          </div>
+          <div style="min-width:260px;">
+            <label class="muted">Branch Name</label>
+            <input id="license_branch_name" type="text" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);" />
           </div>
         </div>
       </div>
@@ -1985,10 +1997,13 @@ function showSection(name) {
     }
 
     function clearLicenseRequestFields() {
+      setInput("license_backend_name", "");
       setInput("license_backend_id", "");
       setInput("license_machine_id", "");
+      setInput("license_device_id", "");
       setInput("license_business_id", "");
       setInput("license_branch_id", "");
+      setInput("license_branch_name", "");
       setInput("req_current_plan", "");
       setInput("req_current_total", "");
       setInput("req_total_devices", "");
@@ -2041,9 +2056,13 @@ function showSection(name) {
         const opt = document.createElement("option");
         opt.value = row.backend_id || row.id;
         opt.textContent = row.backend_name || row.backend_id || "Backend";
+        opt.dataset.backendName = row.backend_name || "";
         opt.dataset.machineId = row.machine_id || "";
+        opt.dataset.deviceId = row.device_id || "";
         opt.dataset.businessId = row.business_id || "";
+        opt.dataset.businessName = row.business_name || "";
         opt.dataset.branchId = row.branch_id || "";
+        opt.dataset.branchName = row.branch_name || "";
         sel.appendChild(opt);
       });
       clearLicenseRequestFields();
@@ -2053,16 +2072,23 @@ function showSection(name) {
       const sel = byId("license_backend");
       const opt = sel?.selectedOptions?.[0];
       if (!sel || !opt || !sel.value) {
+        setInput("license_backend_name", "");
         setInput("license_backend_id", "");
         setInput("license_machine_id", "");
+        setInput("license_device_id", "");
         setInput("license_business_id", "");
         setInput("license_branch_id", "");
+        setInput("license_branch_name", "");
         return;
       }
+      setInput("license_backend_name", opt.dataset.backendName || opt.textContent || "");
       setInput("license_backend_id", sel.value);
       setInput("license_machine_id", opt.dataset.machineId || "");
+      setInput("license_device_id", opt.dataset.deviceId || "");
       setInput("license_business_id", opt.dataset.businessId || "");
       setInput("license_branch_id", opt.dataset.branchId || "");
+      setInput("license_branch_name", opt.dataset.branchName || "");
+      setInput("req_business_name", opt.dataset.businessName || "");
     }
 
     async function loadCurrentLicenseForRequest() {
@@ -2224,6 +2250,9 @@ function showSection(name) {
       const businessId = byId("license_business_id")?.value || "";
       const branchId = byId("license_branch_id")?.value || "";
       const machineId = byId("license_machine_id")?.value || "";
+      const deviceId = byId("license_device_id")?.value || "";
+      const backendName = byId("license_backend_name")?.value || "";
+      const branchName = byId("license_branch_name")?.value || "";
       const requestType = byId("req_type")?.value || "";
       const requestedPlan = byId("req_plan")?.value || "";
 
@@ -2237,6 +2266,9 @@ function showSection(name) {
         business_id: businessId,
         branch_id: branchId,
         machine_id: machineId,
+        device_id: deviceId,
+        backend_name: backendName,
+        branch_name: branchName,
         business_name: byId("req_business_name")?.value || "",
         contact_person: byId("req_contact_person")?.value || "",
         email: byId("req_email")?.value || "",

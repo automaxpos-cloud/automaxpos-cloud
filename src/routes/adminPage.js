@@ -431,23 +431,46 @@ router.get(
 
       <section id="section-manual" class="hidden">
         <h1>Manual License Manager</h1>
-        <div class="muted">Issue and manage signed licenses from the cloud generator.</div>
-        <div class="card" style="margin-top:10px;">
-          <div class="row">
-            <div class="muted" style="flex:1;">Download the latest AutoMax License Generator executables.</div>
-            <a class="btn" href="/downloads/AutoMax_License_Generator_GUI.exe">Download GUI</a>
-            <a class="btn" href="/downloads/AutoMax_License_Generator.exe">Download CLI</a>
-          </div>
+        <div class="muted">Issue and update licenses from approved business requests. Core identity fields are locked to request data.</div>
+        <div id="manual_context_banner" class="card" style="margin-top:10px;display:none;">
+          <div class="muted" style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;">Loaded Request</div>
+          <div id="manual_context_text" style="font-weight:600;margin-top:4px;"></div>
         </div>
         <div class="card" style="margin-top:12px;">
           <div class="row">
             <div>
-              <label class="muted">Business Owner</label>
-              <select id="manual_business" style="width:100%;"></select>
+              <label class="muted">Business Name</label>
+              <select id="manual_business" style="width:100%;" disabled></select>
             </div>
             <div>
+              <label class="muted">Business ID</label>
+              <input id="manual_business_id" type="text" readonly style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Branch</label>
+              <input id="manual_branch_name" type="text" readonly style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Branch ID</label>
+              <input id="manual_branch_id" type="text" readonly style="width:100%;" />
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <div>
               <label class="muted">Backend</label>
-              <select id="manual_backend" style="width:100%;"></select>
+              <select id="manual_backend" style="width:100%;" disabled></select>
+            </div>
+            <div>
+              <label class="muted">Backend ID</label>
+              <input id="manual_backend_id" type="text" readonly style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Machine ID</label>
+              <input id="manual_machine_id" type="text" readonly style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Device ID</label>
+              <input id="manual_device_id" type="text" readonly style="width:100%;" />
             </div>
           </div>
           <div class="row" style="margin-top:8px;">
@@ -517,7 +540,7 @@ router.get(
             </div>
             <div>
               <label class="muted">Request ID</label>
-              <input id="manual_request_id" type="text" style="width:100%;" />
+              <input id="manual_request_id" type="text" readonly style="width:100%;" />
             </div>
             <div>
               <label class="muted">Hardware Bundle</label>
@@ -528,11 +551,25 @@ router.get(
               <input id="manual_quoted_price" type="number" min="0" style="width:100%;" />
             </div>
           </div>
+          <div class="row" style="margin-top:8px;">
+            <div>
+              <label class="muted">Contact Person</label>
+              <input id="manual_contact_person" type="text" readonly style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Email</label>
+              <input id="manual_contact_email" type="text" readonly style="width:100%;" />
+            </div>
+            <div>
+              <label class="muted">Phone</label>
+              <input id="manual_contact_phone" type="text" readonly style="width:100%;" />
+            </div>
+          </div>
           <div class="row" style="margin-top:10px;">
             <div class="spacer"></div>
             <button class="btn" id="manual_refresh">Refresh Lists</button>
             <button class="btn" id="manual_clear">Clear</button>
-            <button class="btn primary" id="manual_create">Create / Update</button>
+            <button class="btn primary" id="manual_create">Issue License</button>
           </div>
         </div>
         <div class="toolbar">
@@ -725,6 +762,14 @@ router.get(
           <div class="toolbar" style="margin-top:10px;">
             <button class="btn primary" id="settings_save">Save Settings</button>
             <div class="status-line" id="settings_status"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:14px;">
+          <div class="muted">Internal tools (not part of the standard license workflow).</div>
+          <div class="row" style="margin-top:10px;">
+            <div class="muted" style="flex:1;">License generator executables (internal use only).</div>
+            <a class="btn" href="/downloads/AutoMax_License_Generator_GUI.exe">Download GUI</a>
+            <a class="btn" href="/downloads/AutoMax_License_Generator.exe">Download CLI</a>
           </div>
         </div>
       </section>
@@ -940,6 +985,8 @@ let activeRequestId = null;
     let requestMap = new Map();
     let licenseMap = new Map();
     let backendMap = new Map();
+    let manualContext = { source: null, requestId: null, licenseId: null };
+    let manualRequestSnapshot = null;
 
     function setToast(msg, color) {
       const el = byId("toast");
@@ -1197,8 +1244,11 @@ let activeRequestId = null;
           "<div class='req-detail'>" +
           "<div><span class='muted'>Email:</span> " + (r.email || "-") + "</div>" +
           "<div><span class='muted'>Phone:</span> " + (r.phone || "-") + "</div>" +
+          "<div><span class='muted'>Branch:</span> " + (r.branch_name || "-") + "</div>" +
+          "<div><span class='muted'>Backend:</span> " + (r.backend_name || "-") + "</div>" +
           "<div><span class='muted'>Hardware:</span> " + (r.hardware_bundle || "-") + "</div>" +
           "<div><span class='muted'>Machine ID:</span> " + (r.machine_id || "-") + "</div>" +
+          "<div><span class='muted'>Device ID:</span> " + (r.device_id || "-") + "</div>" +
           "<div><span class='muted'>Backend ID:</span> " + (r.backend_id || "-") + "</div>" +
           "<div><span class='muted'>Requested At:</span> " + (r.requested_at ? new Date(r.requested_at).toLocaleString() : "-") + "</div>" +
           "<div><span class='muted'>Payment Ref:</span> " + (r.payment_reference || "-") + "</div>" +
@@ -1218,6 +1268,7 @@ let activeRequestId = null;
           "<td>" + statusBadge(r.status || r.request_status) + "</td>" +
           "<td>" + paymentStatusBadge(r.payment_status) + "</td>" +
           "<td>" +
+          "<button class='btn' data-action='load' data-id='" + r.id + "'>Load</button> " +
           "<button class='btn' data-action='view' data-id='" + r.id + "'>View</button> " +
           "<button class='btn' data-action='approve' data-id='" + r.id + "'" + (paid ? "" : " disabled") + ">Approve</button> " +
           "<button class='btn' data-action='reject' data-id='" + r.id + "'>Reject</button>" +
@@ -1870,6 +1921,148 @@ let activeRequestId = null;
       return "initial_issue";
     }
 
+    function setManualFieldDisabled(id, disabled) {
+      const el = byId(id);
+      if (el) el.disabled = !!disabled;
+    }
+
+    function setManualFieldReadonly(id, readOnly) {
+      const el = byId(id);
+      if (el) el.readOnly = !!readOnly;
+    }
+
+    function updateManualActionLabel() {
+      const btn = byId("manual_create");
+      if (!btn) return;
+      if (manualContext.source === "license") {
+        btn.textContent = "Update License";
+        btn.disabled = false;
+        return;
+      }
+      if (manualContext.source === "request") {
+        btn.textContent = "Issue License";
+        btn.disabled = false;
+        return;
+      }
+      btn.textContent = "Issue License";
+      btn.disabled = true;
+    }
+
+    function updateManualContextBanner({ title, detail }) {
+      const banner = byId("manual_context_banner");
+      const text = byId("manual_context_text");
+      if (!banner || !text) return;
+      if (!title && !detail) {
+        banner.style.display = "none";
+        text.textContent = "";
+        return;
+      }
+      banner.style.display = "block";
+      banner.firstElementChild.textContent = title || "Loaded Request";
+      text.textContent = detail || "";
+    }
+
+    function setManualContext(source, options = {}) {
+      manualContext = {
+        source: source || null,
+        requestId: options.requestId || null,
+        licenseId: options.licenseId || null
+      };
+      const lockCore = manualContext.source !== "license";
+      setManualFieldDisabled("manual_business", true);
+      setManualFieldDisabled("manual_backend", true);
+      setManualFieldDisabled("manual_issue_type", lockCore);
+      setManualFieldDisabled("manual_plan", lockCore);
+      setManualFieldReadonly("manual_extra_devices", lockCore);
+      setManualFieldReadonly("manual_hardware_bundle", lockCore);
+      setManualFieldReadonly("manual_quoted_price", lockCore);
+      updateManualActionLabel();
+      if (!manualContext.source) {
+        updateManualContextBanner({ title: "", detail: "" });
+      }
+    }
+
+    async function applyRequestToManualForm(r) {
+      if (!r) return;
+      manualRequestSnapshot = r;
+      setManualContext("request", { requestId: r.request_id || null });
+
+      if (byId("manual_business")?.options?.length <= 1) {
+        await loadBusinesses(true);
+      }
+      if (byId("manual_business")) byId("manual_business").value = r.business_id || "";
+      byId("manual_business_id").value = r.business_id || "";
+      byId("manual_branch_name").value = r.branch_name || "";
+      byId("manual_branch_id").value = r.branch_id || "";
+
+      await loadBackendsCatalog(true);
+      if (byId("manual_backend")) byId("manual_backend").value = r.backend_id || "";
+      byId("manual_backend_id").value = r.backend_id || "";
+      byId("manual_machine_id").value = r.machine_id || "";
+      byId("manual_device_id").value = r.device_id || "";
+
+      byId("manual_issue_type").value = r.request_type || "new_license";
+      byId("manual_plan").value = r.requested_plan || r.plan || "Starter";
+      byId("manual_extra_devices").value = r.extra_device_count ?? 0;
+      byId("manual_request_id").value = r.request_id || "";
+      byId("manual_hardware_bundle").value = r.hardware_bundle || "";
+      byId("manual_quoted_price").value = r.amount_expected ?? "";
+      byId("manual_contact_person").value = r.contact_person || "";
+      byId("manual_contact_email").value = r.email || "";
+      byId("manual_contact_phone").value = r.phone || "";
+
+      updateManualDerived();
+      if (r.requested_total_device_limit != null) {
+        byId("manual_total_limit").value = r.requested_total_device_limit;
+      }
+
+      const deviceShort = r.device_id ? String(r.device_id).slice(0, 8) + "..." : "";
+      const backendLabel = r.backend_name || r.backend_id || "Backend";
+      const detail = [
+        (r.request_id ? "Request " + r.request_id : "Request loaded"),
+        r.business_name || r.business_name_ref || "-",
+        backendLabel,
+        deviceShort ? ("Device " + deviceShort) : ""
+      ].filter(Boolean).join(" | ");
+      updateManualContextBanner({ title: "Loaded Request", detail });
+    }
+
+    async function applyLicenseToManualForm(r) {
+      if (!r) return;
+      manualRequestSnapshot = null;
+      setManualContext("license", { licenseId: r.id || null });
+
+      if (byId("manual_business")?.options?.length <= 1) {
+        await loadBusinesses(true);
+      }
+      if (byId("manual_business")) byId("manual_business").value = r.business_id || "";
+      byId("manual_business_id").value = r.business_id || "";
+      byId("manual_branch_name").value = r.branch_name || "";
+      byId("manual_branch_id").value = r.branch_id || "";
+      await loadBackendsCatalog(true);
+      if (byId("manual_backend")) byId("manual_backend").value = r.backend_id || "";
+      byId("manual_backend_id").value = r.backend_id || "";
+      byId("manual_machine_id").value = r.machine_id || "";
+      byId("manual_device_id").value = r.device_id || "";
+
+      byId("manual_contact_person").value = "";
+      byId("manual_contact_email").value = "";
+      byId("manual_contact_phone").value = "";
+      byId("manual_request_id").value = r.request_id || "";
+      byId("manual_hardware_bundle").value = r.hardware_bundle || "";
+      byId("manual_quoted_price").value = r.quoted_price ?? "";
+
+      const deviceShort = r.device_id ? String(r.device_id).slice(0, 8) + "..." : "";
+      const backendLabel = r.backend_id || "Backend";
+      const detail = [
+        (r.license_id ? "License " + r.license_id : "License loaded"),
+        r.business_name || "-",
+        backendLabel,
+        deviceShort ? ("Device " + deviceShort) : ""
+      ].filter(Boolean).join(" | ");
+      updateManualContextBanner({ title: "Loaded License", detail });
+    }
+
     function updateManualDerived() {
       const issueTypeRaw = byId("manual_issue_type")?.value || "";
       if (!issueTypeRaw) {
@@ -1883,14 +2076,36 @@ let activeRequestId = null;
       const plan = byId("manual_plan")?.value || "Starter";
       const base = manualBaseLimit(plan);
       const extra = Number(byId("manual_extra_devices")?.value || 0);
-      const total = base + (Number.isFinite(extra) ? extra : 0);
+      let total = base + (Number.isFinite(extra) ? extra : 0);
+      if (manualRequestSnapshot && manualContext.source === "request") {
+        const requestedTotal = Number(manualRequestSnapshot.requested_total_device_limit);
+        const currentTotal = Number(manualRequestSnapshot.current_total_device_limit);
+        if (Number.isFinite(requestedTotal)) {
+          total = requestedTotal;
+        } else if (issueType === "device_addon" && Number.isFinite(currentTotal)) {
+          total = currentTotal + (Number.isFinite(extra) ? extra : 0);
+        } else if (issueType === "renewal" && Number.isFinite(currentTotal)) {
+          total = currentTotal;
+        }
+      }
       byId("manual_base_limit").value = base;
       byId("manual_total_limit").value = total;
       byId("manual_change_reason").value = manualChangeReason(issueType);
-      byId("manual_plan").disabled = issueType === "device_addon";
+      const lockCore = manualContext.source !== "license";
+      byId("manual_plan").disabled = lockCore || issueType === "device_addon";
     }
 
     function clearManualForm() {
+      manualRequestSnapshot = null;
+      setManualContext(null);
+      if (byId("manual_business")) byId("manual_business").value = "";
+      if (byId("manual_backend")) byId("manual_backend").value = "";
+      byId("manual_business_id").value = "";
+      byId("manual_branch_name").value = "";
+      byId("manual_branch_id").value = "";
+      byId("manual_backend_id").value = "";
+      byId("manual_machine_id").value = "";
+      byId("manual_device_id").value = "";
       if (byId("manual_issue_type")) byId("manual_issue_type").value = "";
       if (byId("manual_plan")) byId("manual_plan").value = "Starter";
       byId("manual_base_limit").value = "";
@@ -1905,6 +2120,9 @@ let activeRequestId = null;
       byId("manual_request_id").value = "";
       byId("manual_hardware_bundle").value = "";
       byId("manual_quoted_price").value = "";
+      byId("manual_contact_person").value = "";
+      byId("manual_contact_email").value = "";
+      byId("manual_contact_phone").value = "";
       updateManualDerived();
     }
 
@@ -2005,7 +2223,10 @@ let activeRequestId = null;
             { label: "Paid Amount", value: r.paid_amount != null ? "K" + r.paid_amount : "-" },
             { label: "Notes", value: r.notes || "-" },
             { label: "Machine ID", value: r.machine_id },
+            { label: "Device ID", value: r.device_id || "-" },
+            { label: "Backend Name", value: r.backend_name || "-" },
             { label: "Backend ID", value: r.backend_id, warn: !r.backend_id },
+            { label: "Branch", value: r.branch_name || "-" },
             { label: "Business ID", value: r.business_id, warn: !r.business_id },
             { label: "Branch ID", value: r.branch_id, warn: !r.branch_id },
             { label: "Requested At", value: r.requested_at }
@@ -2014,17 +2235,8 @@ let activeRequestId = null;
         if (btn.dataset.action === "load") {
           const r = requestMap.get(String(id));
           if (!r) return;
-          byId("manual_business").value = r.business_id || "";
-          await loadBackendsCatalog();
-          byId("manual_backend").value = r.backend_id || "";
-          byId("manual_issue_type").value = r.request_type || "new_license";
-          byId("manual_plan").value = r.requested_plan || r.plan || "Starter";
-          byId("manual_extra_devices").value = r.extra_device_count ?? 0;
-          byId("manual_request_id").value = r.request_id || "";
-          byId("manual_hardware_bundle").value = r.hardware_bundle || "";
-          byId("manual_quoted_price").value = r.amount_expected ?? "";
-          updateManualDerived();
-          setToast("Request loaded into generator.", "var(--good)");
+          await applyRequestToManualForm(r);
+          setToast("Request loaded into License Manager.", "var(--good)");
         }
       });
 
@@ -2195,7 +2407,7 @@ let activeRequestId = null;
         if (btn.dataset.action === "load") {
           const r = licenseMap.get(String(id));
           if (!r) return;
-          byId("manual_backend").value = r.backend_id || "";
+          await applyLicenseToManualForm(r);
           const reason = String(r.change_reason || "");
           const issueType =
             reason === "device_addon" ? "device_addon"
@@ -2221,6 +2433,9 @@ let activeRequestId = null;
             byId("manual_issued_at").value = d.toISOString().slice(0, 10);
           }
           updateManualDerived();
+          if (r.total_device_limit != null || r.device_limit != null) {
+            byId("manual_total_limit").value = r.total_device_limit ?? r.device_limit ?? "";
+          }
           setToast("Loaded license into form.", "var(--good)");
         }
       });
@@ -2259,6 +2474,7 @@ let activeRequestId = null;
       bindTableActions();
       bindPaymentModal();
       updateAdminNavVisibility();
+      setManualContext(null);
 
       const themeBtn = byId("themeToggle");
       if (themeBtn) {
@@ -2465,6 +2681,8 @@ let activeRequestId = null;
         const requestId = byId("manual_request_id").value;
         const hardwareBundle = byId("manual_hardware_bundle").value;
         const quotedPrice = byId("manual_quoted_price").value;
+        if (!manualContext.source) return setToast("Load a license request first.", "var(--warn)");
+        if (manualContext.source === "request" && !requestId) return setToast("Request ID missing. Reload request.", "var(--warn)");
         const body = {
           backend_id: backendId,
           issue_type: issueType,
@@ -2489,7 +2707,7 @@ let activeRequestId = null;
         if (!res.ok) {
           return setToast(data.error || "Failed to create license.", "var(--bad)");
         }
-        setToast("License created/updated.", "var(--good)");
+        setToast(manualContext.source === "license" ? "License updated." : "License issued.", "var(--good)");
         await loadManualLicenses();
       });
       byId("manual_clear").addEventListener("click", clearManualForm);

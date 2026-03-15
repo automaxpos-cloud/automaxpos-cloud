@@ -512,7 +512,9 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.id,
         lr.request_id,
         lr.customer_name,
-        lr.business_name,
+        COALESCE(lr.business_name, b.name) AS business_name,
+        b.name AS business_name_ref,
+        br.name AS branch_name,
         lr.contact_person,
         lr.email,
         lr.phone,
@@ -527,8 +529,10 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.hardware_bundle,
         lr.amount_expected,
         lr.notes,
-        lr.machine_id,
+        COALESCE(lr.machine_id, bd.machine_id) AS machine_id,
+        COALESCE(lr.device_id, bd.installation_id::text) AS device_id,
         lr.backend_id,
+        bd.backend_name,
         lr.business_id,
         lr.branch_id,
         lr.requested_at,
@@ -549,6 +553,9 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.location,
         lr.address
       FROM license_requests lr
+      LEFT JOIN backend_devices bd ON bd.id::text = lr.backend_id
+      LEFT JOIN businesses b ON b.id::text = lr.business_id
+      LEFT JOIN branches br ON br.id::text = lr.branch_id
       WHERE (
         $1 = '' OR
         lr.request_id ILIKE '%' || $1 || '%' OR

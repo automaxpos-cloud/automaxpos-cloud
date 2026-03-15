@@ -179,10 +179,11 @@ async function request(req, res) {
     let branchId = backend ? backend.branch_id : String(body.branch_id || "").trim();
 
     const backendRow = await pool.query(
-      `SELECT machine_id FROM backend_devices WHERE id=$1`,
+      `SELECT machine_id, installation_id FROM backend_devices WHERE id=$1`,
       [backendId]
     );
     const machineId = String(body.machine_id || backendRow.rows[0]?.machine_id || "").trim();
+    const deviceId = String(body.device_id || backendRow.rows[0]?.installation_id || "").trim();
     const requestId = String(body.request_id || body.requestId || "").trim().slice(0, 64) || buildRequestId();
 
     const existing = await pool.query(
@@ -250,7 +251,7 @@ async function request(req, res) {
         requestedPlan,
         deviceCount,
         machineId,
-        String(body.device_id || ""),
+        deviceId,
         backendId,
         businessId,
         branchId,

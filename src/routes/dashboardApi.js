@@ -194,6 +194,7 @@ router.get("/backends", authUser, async (req, res) => {
          bd.business_id,
          bd.branch_id,
          bd.machine_id,
+         bd.installation_id AS device_id,
          b.name AS business_name,
          br.name AS branch_name,
          bd.last_seen_at AS last_heartbeat_at,
