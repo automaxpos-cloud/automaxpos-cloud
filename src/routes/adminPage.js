@@ -987,6 +987,7 @@ let activeRequestId = null;
     let backendMap = new Map();
     let manualContext = { source: null, requestId: null, licenseId: null };
     let manualRequestSnapshot = null;
+    const manualRequestStorageKey = "automax_manual_request_cache";
 
     function setToast(msg, color) {
       const el = byId("toast");
@@ -1962,6 +1963,38 @@ let activeRequestId = null;
       text.textContent = detail || "";
     }
 
+    function cacheManualRequest(r) {
+      try {
+        if (!r) return;
+        sessionStorage.setItem(manualRequestStorageKey, JSON.stringify(r));
+      } catch (_) {}
+    }
+
+    function clearCachedManualRequest() {
+      try {
+        sessionStorage.removeItem(manualRequestStorageKey);
+      } catch (_) {}
+    }
+
+    async function restoreManualRequestFromStorage() {
+      if (manualContext.source) return;
+      let raw = null;
+      try {
+        raw = sessionStorage.getItem(manualRequestStorageKey);
+      } catch (_) {}
+      if (!raw) return;
+      let payload = null;
+      try {
+        payload = JSON.parse(raw);
+      } catch (_) {
+        clearCachedManualRequest();
+        return;
+      }
+      if (payload) {
+        await applyRequestToManualForm(payload);
+      }
+    }
+
     function setManualContext(source, options = {}) {
       manualContext = {
         source: source || null,
@@ -2025,12 +2058,19 @@ let activeRequestId = null;
         deviceShort ? ("Device " + deviceShort) : ""
       ].filter(Boolean).join(" | ");
       updateManualContextBanner({ title: "Loaded Request", detail });
+      cacheManualRequest(r);
+      return Boolean(
+        byId("manual_request_id")?.value ||
+        byId("manual_backend_id")?.value ||
+        byId("manual_business_id")?.value
+      );
     }
 
     async function applyLicenseToManualForm(r) {
       if (!r) return;
       manualRequestSnapshot = null;
       setManualContext("license", { licenseId: r.id || null });
+      clearCachedManualRequest();
 
       if (byId("manual_business")?.options?.length <= 1) {
         await loadBusinesses(true);
@@ -2098,6 +2138,7 @@ let activeRequestId = null;
     function clearManualForm() {
       manualRequestSnapshot = null;
       setManualContext(null);
+      clearCachedManualRequest();
       if (byId("manual_business")) byId("manual_business").value = "";
       if (byId("manual_backend")) byId("manual_backend").value = "";
       byId("manual_business_id").value = "";
@@ -2124,6 +2165,15 @@ let activeRequestId = null;
       byId("manual_contact_email").value = "";
       byId("manual_contact_phone").value = "";
       updateManualDerived();
+    }
+
+    function showManualSection() {
+      const target = "/jpmax-admin/automax-pos/licenses";
+      if (window.location.pathname !== target) {
+        window.history.pushState({}, "", target);
+      }
+      setActiveNav();
+      showSection();
     }
 
     async function refreshAll() {
@@ -2235,8 +2285,13 @@ let activeRequestId = null;
         if (btn.dataset.action === "load") {
           const r = requestMap.get(String(id));
           if (!r) return;
-          await applyRequestToManualForm(r);
-          setToast("Request loaded into License Manager.", "var(--good)");
+          const ok = await applyRequestToManualForm(r);
+          if (ok) {
+            showManualSection();
+            setToast("Request loaded into License Manager.", "var(--good)");
+          } else {
+            setToast("Failed to load request into License Manager.", "var(--bad)");
+          }
         }
       });
 
@@ -2475,6 +2530,9 @@ let activeRequestId = null;
       bindPaymentModal();
       updateAdminNavVisibility();
       setManualContext(null);
+      if (window.location.pathname.endsWith("/automax-pos/licenses")) {
+        await restoreManualRequestFromStorage();
+      }
 
       const themeBtn = byId("themeToggle");
       if (themeBtn) {
