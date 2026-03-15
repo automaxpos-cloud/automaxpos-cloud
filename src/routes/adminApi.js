@@ -20,6 +20,75 @@ function normalizePaymentMethod(value) {
   return allowed.has(raw) ? raw : null;
 }
 
+function normalizeId(value) {
+  if (value == null) return "";
+  return String(value).trim();
+}
+
+function extractSignedLicenseInput(raw) {
+  if (!raw || typeof raw !== "object") return { error: "INVALID_LICENSE" };
+  const src = raw.license && typeof raw.license === "object" ? raw.license : raw;
+  let sigB64 = null;
+  if (src.sig_b64) sigB64 = String(src.sig_b64).trim();
+  if (!sigB64 && src.signature && typeof src.signature === "object") {
+    sigB64 = String(src.signature.sig_b64 || src.signature.value || "").trim();
+  }
+  if (!sigB64 && typeof src.signature === "string") {
+    sigB64 = String(src.signature).trim();
+  }
+  if (!sigB64 && src.signature_b64) {
+    sigB64 = String(src.signature_b64).trim();
+  }
+
+  let payloadJson = null;
+  let payloadObj = null;
+  let payloadB64 = null;
+
+  try {
+    if (src.payload_b64) {
+      payloadB64 = String(src.payload_b64).trim();
+      payloadJson = Buffer.from(payloadB64, "base64").toString("utf8");
+      payloadObj = JSON.parse(payloadJson);
+    } else if (src.payload_json) {
+      payloadJson = String(src.payload_json);
+      payloadObj = JSON.parse(payloadJson);
+      payloadB64 = Buffer.from(payloadJson, "utf8").toString("base64");
+    } else if (typeof src.payload === "string") {
+      payloadJson = src.payload;
+      payloadObj = JSON.parse(payloadJson);
+      payloadB64 = Buffer.from(payloadJson, "utf8").toString("base64");
+    } else if (src.payload && typeof src.payload === "object") {
+      payloadObj = src.payload;
+      payloadJson = JSON.stringify(payloadObj);
+      payloadB64 = Buffer.from(payloadJson, "utf8").toString("base64");
+    }
+  } catch (err) {
+    return { error: "INVALID_PAYLOAD_JSON", message: err?.message || "Invalid payload JSON" };
+  }
+
+  if (!payloadJson || !payloadObj) {
+    return { error: "MISSING_PAYLOAD" };
+  }
+  if (!sigB64) {
+    return { error: "MISSING_SIGNATURE" };
+  }
+
+  return { payloadJson, payloadObj, payloadB64, sigB64 };
+}
+
+function parseIsoDate(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function addYears(date, years) {
+  const d = new Date(date.getTime());
+  d.setFullYear(d.getFullYear() + years);
+  return d;
+}
+
 async function logAudit({ admin, action, backendId, businessId, licenseId, oldValue, newValue }) {
   try {
     await pool.query(
@@ -790,6 +859,328 @@ router.post(
     // eslint-disable-next-line no-console
     console.error("APPROVE REQUEST ERROR:", err?.message || err, err?.stack || "");
     return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to approve request" });
+  }
+  }
+);
+
+router.post(
+  "/license-requests/:id/attach-license",
+  adminJwt,
+  requireRole(["SUPER_ADMIN", "LICENSING_ADMIN"]),
+  async (req, res) => {
+  try {
+    const requestId = String(req.params.id || "").trim();
+    if (!requestId) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+
+    const parsed = extractSignedLicenseInput(req.body || {});
+    if (parsed.error) {
+      return res.status(400).json({
+        ok: false,
+        error: parsed.error,
+        message: parsed.message || "Invalid signed license payload"
+      });
+    }
+
+    const { payloadJson, payloadObj, payloadB64, sigB64 } = parsed;
+    const reqRow = await pool.query(
+      `
+      SELECT
+        lr.*,
+        b.name AS business_name,
+        br.name AS branch_name,
+        bd.backend_name,
+        bd.machine_id AS backend_machine_id,
+        bd.installation_id::text AS backend_device_id
+      FROM license_requests lr
+      LEFT JOIN backend_devices bd ON bd.id::text = lr.backend_id
+      LEFT JOIN businesses b ON b.id::text = lr.business_id
+      LEFT JOIN branches br ON br.id::text = lr.branch_id
+      WHERE lr.id=$1
+      `,
+      [requestId]
+    );
+    if (!reqRow.rows.length) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    }
+
+    const row = reqRow.rows[0];
+    let backendId = row.backend_id || "";
+    let machineId = row.machine_id || row.backend_machine_id || "";
+    let deviceId = row.device_id || row.backend_device_id || "";
+
+    if (!backendId && machineId) {
+      const backendRes = await pool.query(
+        `SELECT id, machine_id, installation_id::text AS device_id
+         FROM backend_devices
+         WHERE machine_id=$1
+         ORDER BY last_seen_at DESC NULLS LAST
+         LIMIT 1`,
+        [machineId]
+      );
+      if (backendRes.rows.length) {
+        backendId = backendRes.rows[0].id || backendId;
+        machineId = backendRes.rows[0].machine_id || machineId;
+        deviceId = backendRes.rows[0].device_id || deviceId;
+      }
+    }
+
+    if (!backendId) {
+      return res.status(400).json({
+        ok: false,
+        error: "BACKEND_NOT_FOUND",
+        message: "Request has no backend_id/machine_id match."
+      });
+    }
+
+    const payload = payloadObj || {};
+    const payloadRequestId = normalizeId(payload.request_id || payload.requestId);
+    const payloadBusinessId = normalizeId(payload.business_id || payload.business?.business_id);
+    const payloadBranchId = normalizeId(payload.branch_id || payload.backend?.branch_id);
+    const payloadBackendId = normalizeId(payload.backend_id || payload.backend?.backend_id);
+    const payloadMachineId = normalizeId(payload.machine_id || payload.backend?.machine_id);
+    const payloadDeviceId = normalizeId(payload.device_id || payload.backend?.device_id || payload.device?.device_id);
+    const payloadLicenseId = normalizeId(payload.license_id || payload.licenseId);
+
+    if (!payloadLicenseId) {
+      return res.status(400).json({ ok: false, error: "LICENSE_ID_REQUIRED", message: "License payload missing license_id." });
+    }
+
+    const mismatches = [];
+    const checkMatch = (label, expected, actual) => {
+      const exp = normalizeId(expected);
+      const act = normalizeId(actual);
+      if (!exp) return;
+      if (!act) {
+        mismatches.push(label + "_missing");
+        return;
+      }
+      if (exp !== act) mismatches.push(label + "_mismatch");
+    };
+
+    checkMatch("request_id", row.request_id, payloadRequestId);
+    checkMatch("business_id", row.business_id, payloadBusinessId);
+    checkMatch("branch_id", row.branch_id, payloadBranchId);
+    checkMatch("backend_id", backendId, payloadBackendId);
+    checkMatch("machine_id", machineId, payloadMachineId);
+    if (payloadDeviceId) {
+      checkMatch("device_id", deviceId, payloadDeviceId);
+    }
+
+    if (mismatches.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "LICENSE_MISMATCH",
+        mismatches
+      });
+    }
+
+    const sigOk = licenseService.verifyPayloadSignature(payloadJson, sigB64);
+    if (!sigOk) {
+      return res.status(400).json({
+        ok: false,
+        error: "INVALID_SIGNATURE",
+        message: "Signed license failed verification."
+      });
+    }
+
+    const requestedTotal =
+      row.requested_total_device_limit ??
+      row.device_limit ??
+      row.current_total_device_limit ??
+      null;
+    const payloadTotal =
+      payload.plan?.device_limit ??
+      payload.device_limit ??
+      payload.deviceLimit ??
+      null;
+    const rawPlanName =
+      payload.plan?.plan_name ||
+      payload.plan?.plan ||
+      payload.plan_name ||
+      payload.plan ||
+      row.requested_plan ||
+      row.plan ||
+      row.current_plan ||
+      "Business";
+    const totalDeviceLimitRaw = Number.isFinite(Number(payloadTotal))
+      ? Number(payloadTotal)
+      : (Number.isFinite(Number(requestedTotal)) ? Number(requestedTotal) : null);
+    const planName = licenseService.normalizePlan(rawPlanName, totalDeviceLimitRaw);
+    const planKey = String(rawPlanName || "").trim().toUpperCase();
+    const baseDeviceLimit = licenseService.PLAN_LIMITS[planKey] ?? licenseService.PLAN_LIMITS.BUSINESS;
+    const extraDeviceCount = Number.isFinite(Number(totalDeviceLimitRaw))
+      ? Math.max(0, Number(totalDeviceLimitRaw) - Number(baseDeviceLimit))
+      : (row.extra_device_count != null ? Number(row.extra_device_count) : 0);
+    const totalDeviceLimit = Number.isFinite(Number(totalDeviceLimitRaw))
+      ? Number(totalDeviceLimitRaw)
+      : (Number(baseDeviceLimit) + Number(extraDeviceCount || 0));
+    const issuedAt = parseIsoDate(payload.issued_at) || new Date();
+    const expiresAt = parseIsoDate(payload.expires_at) || addYears(issuedAt, 3);
+    const graceEndsAt = parseIsoDate(payload.grace_ends_at) || new Date(expiresAt.getTime() + 30 * 86400 * 1000);
+    const changeReason = payload.plan?.request_type || row.request_type || "initial_issue";
+    const licenseStatus = String(payload.license_status || payload.status || "active");
+    const features = payload.features || {
+      cloud_sync: true,
+      inventory: true,
+      reports: true,
+      returns: true,
+      multi_device: true
+    };
+
+    const existing = await licenseService.getBackendLicense(backendId);
+    const licenseVersion = Number(existing?.license_version || 0) + 1;
+    const previousLicenseId = existing?.license_id || null;
+
+    const issuerId = req.admin?.user_id || req.admin?.id || null;
+    const issuerName = req.admin?.full_name || req.admin?.username || null;
+    const issuerEmail = req.admin?.email || null;
+
+    await pool.query(
+      `
+      INSERT INTO backend_licenses (
+        business_id,
+        branch_id,
+        backend_id,
+        machine_id,
+        license_id,
+        plan,
+        device_limit,
+        issued_at,
+        expires_at,
+        grace_ends_at,
+        features_json,
+        payload_b64,
+        sig_b64,
+        status,
+        plan_name,
+        base_device_limit,
+        extra_device_count,
+        total_device_limit,
+        license_version,
+        previous_license_id,
+        change_reason,
+        license_status,
+        request_id,
+        hardware_bundle,
+        quoted_price,
+        issued_by_admin_id,
+        issued_by_name,
+        issued_by_email,
+        approved_by_admin_id,
+        approved_at,
+        updated_by_admin_id,
+        reissued_by_admin_id,
+        reissued_at,
+        updated_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,
+        $8,$9,$10,
+        $11,$12,$13,'ACTIVE',
+        $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
+        $25,$26,$27,$28,$29,$30,$31,$32,
+        NOW()
+      )
+      ON CONFLICT (backend_id) DO UPDATE SET
+        machine_id = EXCLUDED.machine_id,
+        license_id = EXCLUDED.license_id,
+        plan = EXCLUDED.plan,
+        device_limit = EXCLUDED.device_limit,
+        issued_at = EXCLUDED.issued_at,
+        expires_at = EXCLUDED.expires_at,
+        grace_ends_at = EXCLUDED.grace_ends_at,
+        features_json = EXCLUDED.features_json,
+        payload_b64 = EXCLUDED.payload_b64,
+        sig_b64 = EXCLUDED.sig_b64,
+        status = EXCLUDED.status,
+        plan_name = EXCLUDED.plan_name,
+        base_device_limit = EXCLUDED.base_device_limit,
+        extra_device_count = EXCLUDED.extra_device_count,
+        total_device_limit = EXCLUDED.total_device_limit,
+        license_version = EXCLUDED.license_version,
+        previous_license_id = EXCLUDED.previous_license_id,
+        change_reason = EXCLUDED.change_reason,
+        license_status = EXCLUDED.license_status,
+        request_id = EXCLUDED.request_id,
+        hardware_bundle = EXCLUDED.hardware_bundle,
+        quoted_price = EXCLUDED.quoted_price,
+        issued_by_admin_id = COALESCE(EXCLUDED.issued_by_admin_id, backend_licenses.issued_by_admin_id),
+        issued_by_name = COALESCE(EXCLUDED.issued_by_name, backend_licenses.issued_by_name),
+        issued_by_email = COALESCE(EXCLUDED.issued_by_email, backend_licenses.issued_by_email),
+        approved_by_admin_id = COALESCE(EXCLUDED.approved_by_admin_id, backend_licenses.approved_by_admin_id),
+        approved_at = COALESCE(EXCLUDED.approved_at, backend_licenses.approved_at),
+        updated_by_admin_id = COALESCE(EXCLUDED.updated_by_admin_id, backend_licenses.updated_by_admin_id),
+        reissued_by_admin_id = COALESCE(EXCLUDED.reissued_by_admin_id, backend_licenses.reissued_by_admin_id),
+        reissued_at = COALESCE(EXCLUDED.reissued_at, backend_licenses.reissued_at),
+        updated_at = NOW()
+      `,
+      [
+        row.business_id,
+        row.branch_id,
+        backendId,
+        machineId || null,
+        payloadLicenseId,
+        planName,
+        totalDeviceLimit,
+        issuedAt,
+        expiresAt,
+        graceEndsAt,
+        JSON.stringify(features),
+        payloadB64,
+        sigB64,
+        planName,
+        baseDeviceLimit,
+        extraDeviceCount,
+        totalDeviceLimit,
+        licenseVersion,
+        previousLicenseId,
+        changeReason,
+        licenseStatus,
+        row.request_id || null,
+        row.hardware_bundle || null,
+        row.amount_expected != null ? Number(row.amount_expected) : null,
+        issuerId,
+        issuerName,
+        issuerEmail,
+        issuerId,
+        issuerId ? new Date() : null,
+        issuerId,
+        changeReason === "correction" ? issuerId : null,
+        changeReason === "correction" ? new Date() : null
+      ]
+    );
+
+    await pool.query(
+      `UPDATE license_requests
+       SET status='LICENSE_READY',
+           request_status=COALESCE(request_status,'approved'),
+           approved_by_admin_id=$2,
+           approved_at=NOW(),
+           reviewed_at=NOW(),
+           updated_at=NOW()
+       WHERE id=$1`,
+      [requestId, issuerId]
+    );
+
+    await logAudit({
+      admin: req.admin,
+      action: "LICENSE_ATTACHED",
+      backendId,
+      businessId: row.business_id,
+      licenseId: payloadLicenseId,
+      oldValue: { request_id: row.request_id },
+      newValue: { status: "LICENSE_READY" }
+    });
+
+    return res.json({
+      ok: true,
+      license_id: payloadLicenseId,
+      backend_id: backendId,
+      device_limit: totalDeviceLimit
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("ATTACH LICENSE ERROR:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR", message: err?.message || "Failed to attach license" });
   }
   }
 );

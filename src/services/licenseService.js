@@ -94,6 +94,34 @@ function getPrivateKeyPem() {
   throw new Error("LICENSE_PRIVATE_KEY_MISSING");
 }
 
+function getPublicKeyPem() {
+  const rawPem = process.env.LICENSE_PUBLIC_KEY_PEM || "";
+  const b64 = process.env.LICENSE_PUBLIC_KEY_B64 || "";
+  const path = process.env.LICENSE_PUBLIC_KEY_PATH || "";
+
+  if (rawPem) {
+    return rawPem.includes("\\n") ? rawPem.replace(/\\n/g, "\n") : rawPem;
+  }
+
+  if (b64) {
+    return Buffer.from(b64, "base64").toString("utf8");
+  }
+
+  if (path) {
+    const fs = require("fs");
+    return fs.readFileSync(path, "utf8");
+  }
+
+  try {
+    const privateKey = getPrivateKeyPem();
+    const keyObj = crypto.createPrivateKey(privateKey);
+    const pubObj = crypto.createPublicKey(keyObj);
+    return pubObj.export({ type: "spki", format: "pem" });
+  } catch (err) {
+    throw new Error("LICENSE_PUBLIC_KEY_MISSING");
+  }
+}
+
 function signPayload(payload) {
   const payloadJson = JSON.stringify(payload);
   const payloadBytes = Buffer.from(payloadJson, "utf8");
@@ -167,6 +195,17 @@ function buildLicensePayload({
   };
 }
 
+function verifyPayloadSignature(payloadJson, sigB64) {
+  if (!payloadJson || !sigB64) return false;
+  try {
+    const payloadBytes = Buffer.from(payloadJson, "utf8");
+    const sigBytes = Buffer.from(sigB64, "base64");
+    return crypto.verify("RSA-SHA256", payloadBytes, getPublicKeyPem(), sigBytes);
+  } catch (_err) {
+    return false;
+  }
+}
+
 function generateLicenseId() {
   const year = new Date().getFullYear();
   const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
@@ -204,15 +243,17 @@ async function issueBackendLicense({
   reissuedBy
 }) {
   const backendRes = await query(
-    `SELECT id, business_id, branch_id, machine_id
-     FROM backend_devices
-     WHERE id = $1`,
+    `SELECT bd.id, bd.business_id, bd.branch_id, bd.machine_id, b.name AS business_name
+     FROM backend_devices bd
+     LEFT JOIN businesses b ON b.id = bd.business_id
+     WHERE bd.id = $1`,
     [backendId]
   );
   if (!backendRes.rows.length) {
     throw new Error("BACKEND_NOT_FOUND");
   }
   const backend = backendRes.rows[0];
+  const businessName = backend.business_name || null;
   const existing = await getBackendLicense(backendId);
   const type = String(issueType || "").toLowerCase() || "new_license";
 
@@ -464,5 +505,6 @@ module.exports = {
   PLAN_LIMITS,
   normalizePlan,
   getBackendLicense,
-  issueBackendLicense
+  issueBackendLicense,
+  verifyPayloadSignature
 };

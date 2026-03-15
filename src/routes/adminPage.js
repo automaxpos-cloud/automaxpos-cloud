@@ -572,6 +572,17 @@ router.get(
             <button class="btn primary" id="manual_create">Issue License</button>
           </div>
         </div>
+        <div class="card hidden" id="manual_fallback_card" style="margin-top:12px;">
+          <div class="muted">Internal fallback tools (JP Max admin only). Use only when normal issuance is unavailable.</div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn" id="manual_export_request" type="button">Export Request Payload</button>
+            <button class="btn" id="manual_upload_btn" type="button">Upload Signed License JSON</button>
+            <input id="manual_license_upload" type="file" accept="application/json,.json" style="display:none;" />
+            <div class="spacer"></div>
+            <button class="btn primary" id="manual_attach_license" type="button">Validate & Attach</button>
+          </div>
+          <div class="status-line" id="manual_fallback_status" style="margin-top:8px;"></div>
+        </div>
         <div class="toolbar">
           <button class="btn" id="manual_list_refresh">Refresh Licenses</button>
           <div class="status-line" id="manual_status"></div>
@@ -987,6 +998,7 @@ let activeRequestId = null;
     let backendMap = new Map();
     let manualContext = { source: null, requestId: null, licenseId: null };
     let manualRequestSnapshot = null;
+    let manualFallbackLicense = null;
     const manualRequestStorageKey = "automax_manual_request_cache";
 
     function setToast(msg, color) {
@@ -1055,10 +1067,21 @@ let activeRequestId = null;
       return String(currentAdminRole || "").toUpperCase() === "SUPER_ADMIN";
     }
 
+    function isLicensingAdmin() {
+      const role = String(currentAdminRole || "").toUpperCase();
+      return role === "SUPER_ADMIN" || role === "LICENSING_ADMIN";
+    }
+
     function updateAdminNavVisibility() {
       const nav = byId("nav-admin-users");
       if (!nav) return;
       nav.classList.toggle("hidden", !isSuperAdmin());
+    }
+
+    function updateManualFallbackVisibility() {
+      const card = byId("manual_fallback_card");
+      if (!card) return;
+      card.classList.toggle("hidden", !isLicensingAdmin());
     }
 
     function statusBadge(status) {
@@ -1173,9 +1196,11 @@ let activeRequestId = null;
         byId("account-text").textContent =
           "Logged in as: " + (data?.username || data?.user?.username || "admin") + " (" + role + ")";
         updateAdminNavVisibility();
+        updateManualFallbackVisibility();
       } else {
         currentAdminRole = null;
         updateAdminNavVisibility();
+        updateManualFallbackVisibility();
       }
     }
 
@@ -1963,6 +1988,51 @@ let activeRequestId = null;
       text.textContent = detail || "";
     }
 
+    function setManualFallbackStatus(msg, color) {
+      const el = byId("manual_fallback_status");
+      if (!el) return;
+      el.textContent = msg || "";
+      el.style.color = color || "var(--muted)";
+    }
+
+    function buildManualRequestExport() {
+      if (!manualRequestSnapshot) return null;
+      const r = manualRequestSnapshot;
+      return {
+        exported_at: new Date().toISOString(),
+        request_id: r.request_id || r.id || null,
+        business_id: r.business_id || null,
+        business_name: r.business_name || r.business_name_ref || r.customer_name || null,
+        branch_id: r.branch_id || null,
+        branch_name: r.branch_name || null,
+        backend_id: r.backend_id || null,
+        backend_name: r.backend_name || null,
+        machine_id: r.machine_id || null,
+        device_id: r.device_id || null,
+        request_type: r.request_type || null,
+        requested_plan: r.requested_plan || r.plan || null,
+        extra_device_count: r.extra_device_count ?? null,
+        requested_total_device_limit: r.requested_total_device_limit ?? r.device_limit ?? null,
+        current_plan: r.current_plan || null,
+        current_total_device_limit: r.current_total_device_limit ?? null,
+        hardware_bundle: r.hardware_bundle || null,
+        amount_expected: r.amount_expected ?? null,
+        contact_person: r.contact_person || null,
+        email: r.email || null,
+        phone: r.phone || null
+      };
+    }
+
+    function downloadJson(data, filename) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "export.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
     function cacheManualRequest(r) {
       try {
         if (!r) return;
@@ -2018,6 +2088,8 @@ let activeRequestId = null;
     async function applyRequestToManualForm(r) {
       if (!r) return;
       manualRequestSnapshot = r;
+      manualFallbackLicense = null;
+      setManualFallbackStatus("");
       setManualContext("request", { requestId: r.request_id || null });
 
       if (byId("manual_business")?.options?.length <= 1) {
@@ -2137,8 +2209,10 @@ let activeRequestId = null;
 
     function clearManualForm() {
       manualRequestSnapshot = null;
+      manualFallbackLicense = null;
       setManualContext(null);
       clearCachedManualRequest();
+      setManualFallbackStatus("");
       if (byId("manual_business")) byId("manual_business").value = "";
       if (byId("manual_backend")) byId("manual_backend").value = "";
       byId("manual_business_id").value = "";
@@ -2766,6 +2840,72 @@ let activeRequestId = null;
           return setToast(data.error || "Failed to create license.", "var(--bad)");
         }
         setToast(manualContext.source === "license" ? "License updated." : "License issued.", "var(--good)");
+        await loadManualLicenses();
+      });
+      byId("manual_export_request").addEventListener("click", () => {
+        if (!manualRequestSnapshot) {
+          return setManualFallbackStatus("Load a request first.", "var(--warn)");
+        }
+        const payload = buildManualRequestExport();
+        const fileName = "license_request_" + (payload?.request_id || manualRequestSnapshot.id || "request") + ".json";
+        downloadJson(payload, fileName);
+        setManualFallbackStatus("Request payload exported.", "var(--good)");
+      });
+      byId("manual_upload_btn").addEventListener("click", () => {
+        if (!isLicensingAdmin()) {
+          return setManualFallbackStatus("Internal tools only.", "var(--warn)");
+        }
+        byId("manual_license_upload").click();
+      });
+      byId("manual_license_upload").addEventListener("change", async (e) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          manualFallbackLicense = JSON.parse(text);
+          const licenseId =
+            manualFallbackLicense?.license_id ||
+            manualFallbackLicense?.license?.license_id ||
+            manualFallbackLicense?.payload?.license_id ||
+            "";
+          setManualFallbackStatus(
+            "Signed license loaded" + (licenseId ? " (" + licenseId + ")." : "."),
+            "var(--good)"
+          );
+        } catch (err) {
+          manualFallbackLicense = null;
+          setManualFallbackStatus("Invalid license JSON file.", "var(--bad)");
+        } finally {
+          e.target.value = "";
+        }
+      });
+      byId("manual_attach_license").addEventListener("click", async () => {
+        if (!manualRequestSnapshot) {
+          return setManualFallbackStatus("Load a request first.", "var(--warn)");
+        }
+        if (!manualFallbackLicense) {
+          return setManualFallbackStatus("Upload a signed license JSON first.", "var(--warn)");
+        }
+        if (!isLicensingAdmin()) {
+          return setManualFallbackStatus("Internal tools only.", "var(--warn)");
+        }
+        const reqRowId = manualRequestSnapshot.id;
+        if (!reqRowId) {
+          return setManualFallbackStatus("Missing request row id.", "var(--bad)");
+        }
+        setManualFallbackStatus("Validating license...", "var(--muted)");
+        const resp = await fetch("/api/admin/license-requests/" + reqRowId + "/attach-license", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ license: manualFallbackLicense })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          setManualFallbackStatus(data?.message || data?.error || "Attach failed.", "var(--bad)");
+          return;
+        }
+        setManualFallbackStatus("License attached. Backend can pull the license.", "var(--good)");
+        await loadRequests();
         await loadManualLicenses();
       });
       byId("manual_clear").addEventListener("click", clearManualForm);
