@@ -752,6 +752,35 @@ router.get("/", (req, res) => {
       </div>
 
       <div class="section">
+        <h2>Available Licenses</h2>
+        <div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <button class="btn" id="license_available_refresh" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Refresh</button>
+          <div id="license_available_status" class="muted"></div>
+        </div>
+        <div id="license-available-empty" class="empty" style="display:none;">No licenses published yet.</div>
+        <table id="license-available-table" style="width:100%;border-collapse:collapse;margin-top:12px;">
+          <thead>
+            <tr>
+              <th>License ID</th>
+              <th>Business</th>
+              <th>Branch</th>
+              <th>Backend</th>
+              <th>Machine ID</th>
+              <th>Device ID</th>
+              <th>Plan</th>
+              <th>Device Limit</th>
+              <th>Status</th>
+              <th>Issued At</th>
+              <th>Expires At</th>
+              <th>Published At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="license-available-body"></tbody>
+        </table>
+      </div>
+
+      <div class="section">
         <h2>Recent Requests</h2>
         <div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
           <button class="btn" id="license_requests_refresh" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Refresh</button>
@@ -781,6 +810,7 @@ router.get("/", (req, res) => {
   <script>
     console.log("[DASH] script loaded");
     const state = { user: null };
+    let licenseAvailableMap = new Map();
     function debug() { try { console.log.apply(console, ["[DASH]"].concat([].slice.call(arguments))); } catch {} }
     function byId(id) {
       const el = document.getElementById(id);
@@ -1904,6 +1934,42 @@ function showSection(name) {
       }
     }
 
+    function formatDateTime(value) {
+      if (!value) return "--";
+      try {
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return String(value);
+        return d.toLocaleString();
+      } catch {
+        return String(value);
+      }
+    }
+
+    function escapeHtml(text) {
+      return String(text || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function openJsonPreview(data) {
+      const win = window.open("", "_blank");
+      if (!win) {
+        alert("Popup blocked. Allow popups to preview JSON.");
+        return;
+      }
+      const pretty = JSON.stringify(data, null, 2);
+      win.document.write(
+        "<!doctype html><html><head><title>License Preview</title></head>" +
+        "<body style='margin:16px;font-family:monospace;'>" +
+        "<pre style='white-space:pre-wrap;'>" + escapeHtml(pretty) + "</pre>" +
+        "</body></html>"
+      );
+      win.document.close();
+    }
+
     function setText(id, value) {
       const el = byId(id);
       if (el) el.textContent = value;
@@ -2244,6 +2310,57 @@ function showSection(name) {
       });
     }
 
+    async function loadAvailableLicenses() {
+      const status = byId("license_available_status");
+      if (status) status.textContent = "Loading...";
+      const backendId = byId("license_backend")?.value || "";
+      if (!backendId) {
+        if (status) status.textContent = "Select a backend first.";
+        const empty = byId("license-available-empty");
+        if (empty) empty.style.display = "block";
+        const body = byId("license-available-body");
+        if (body) body.innerHTML = "";
+        return;
+      }
+      const url = "/api/dashboard/licenses/available?backend_id=" + encodeURIComponent(backendId);
+      const res = await fetch(url, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const raw = data?.message || data?.error || "Failed to load licenses.";
+        if (status) status.textContent = raw;
+        return;
+      }
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      licenseAvailableMap = new Map(rows.map((r) => [String(r.id), r]));
+      if (status) status.textContent = rows.length + " rows";
+      const empty = byId("license-available-empty");
+      if (empty) empty.style.display = rows.length ? "none" : "block";
+      const body = byId("license-available-body");
+      if (!body) return;
+      body.innerHTML = "";
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + (r.license_id || "-") + "</td>" +
+          "<td>" + (r.business_name || "-") + "</td>" +
+          "<td>" + (r.branch_name || "-") + "</td>" +
+          "<td>" + (r.backend_name || "-") + "</td>" +
+          "<td>" + (r.machine_id || "-") + "</td>" +
+          "<td>" + (r.device_id || "-") + "</td>" +
+          "<td>" + (r.plan || "-") + "</td>" +
+          "<td>" + (r.device_limit ?? "-") + "</td>" +
+          "<td>" + (r.status || "-") + "</td>" +
+          "<td>" + formatDateTime(r.issued_at) + "</td>" +
+          "<td>" + formatDateTime(r.expires_at) + "</td>" +
+          "<td>" + formatDateTime(r.published_at) + "</td>" +
+          "<td>" +
+            "<button class='btn' data-action='preview' data-id='" + r.id + "'>Preview</button> " +
+            "<button class='btn' data-action='download' data-id='" + r.id + "'>Download JSON</button>" +
+          "</td>";
+        body.appendChild(tr);
+      });
+    }
+
     async function submitLicenseRequest() {
       const backendSel = byId("license_backend");
       const backendId = backendSel?.value || "";
@@ -2427,6 +2544,7 @@ function showSection(name) {
         await loadLicenseBackends();
         applyBackendSelection();
         await loadCurrentLicenseForRequest();
+        await loadAvailableLicenses();
         await loadLicenseRequests();
       });
       wireNavHover(byId("nav-dashboard"));
@@ -2441,10 +2559,48 @@ function showSection(name) {
       bind("license_backend", "change", async () => {
         applyBackendSelection();
         await loadCurrentLicenseForRequest();
+        await loadAvailableLicenses();
       });
       bind("license_request_btn", "click", submitLicenseRequest);
       bind("license_request_clear", "click", clearLicenseRequestForm);
       bind("license_requests_refresh", "click", loadLicenseRequests);
+      bind("license_available_refresh", "click", loadAvailableLicenses);
+      const availBody = byId("license-available-body");
+      if (availBody) {
+        availBody.addEventListener("click", async (e) => {
+          const btn = e.target.closest("button");
+          if (!btn) return;
+          const id = btn.dataset.id;
+          const action = btn.dataset.action;
+          if (!id || !action) return;
+          const backendId = byId("license_backend")?.value || "";
+          const status = byId("license_available_status");
+          if (status) status.textContent = "Loading license...";
+          const url = "/api/dashboard/licenses/available/" + encodeURIComponent(id) + "/json" +
+            (backendId ? "?backend_id=" + encodeURIComponent(backendId) : "");
+          const res = await fetch(url, { headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const msg = data?.message || data?.error || "Failed to load license.";
+            if (status) status.textContent = msg;
+            return;
+          }
+          if (status) status.textContent = "Ready.";
+          const license = data.license || data;
+          const fallbackName = (licenseAvailableMap.get(String(id)) || {}).license_id || "license";
+          if (action === "preview") {
+            openJsonPreview(license);
+          } else if (action === "download") {
+            const blob = new Blob([JSON.stringify(license, null, 2)], { type: "application/json" });
+            const urlObj = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = urlObj;
+            a.download = (license?.license_id || fallbackName) + ".json";
+            a.click();
+            URL.revokeObjectURL(urlObj);
+          }
+        });
+      }
       bind("copy_agent_code", "click", () => navigator.clipboard.writeText("20124624"));
       bind("copy_amount", "click", () => {
         const amt = byId("pay_amount_due")?.textContent || "";

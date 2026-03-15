@@ -91,6 +91,45 @@ function parseRange(req) {
   return null;
 }
 
+async function getBackendLicensesColumns() {
+  const res = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name='backend_licenses'`
+  );
+  return new Set(res.rows.map((r) => r.column_name));
+}
+
+function selectCol(cols, name, alias) {
+  if (cols.has(name)) return `bl.${name}${alias ? " AS " + alias : ""}`;
+  return `NULL${alias ? " AS " + alias : ""}`;
+}
+
+function selectColExpr(cols, name) {
+  return cols.has(name) ? `bl.${name}` : "NULL";
+}
+
+function buildLicenseJson(row) {
+  let payload = null;
+  try {
+    payload = row?.payload_b64 ? JSON.parse(Buffer.from(row.payload_b64, "base64").toString("utf8")) : null;
+  } catch (_) {
+    payload = null;
+  }
+  return {
+    license_id: row?.license_id || null,
+    payload: payload || null,
+    signature: {
+      algorithm: "RSA-SHA256",
+      key_id: process.env.LICENSE_KEY_ID || "jpmax-license-key-2026-01",
+      value: row?.sig_b64 || null
+    },
+    payload_b64: row?.payload_b64 || null,
+    sig_b64: row?.sig_b64 || null
+  };
+}
+
 router.get("/summary", authUser, async (req, res) => {
   try {
     const scope = getScopedFilters(req, res);
@@ -355,6 +394,158 @@ router.get("/licenses/current", authUser, async (req, res) => {
     return res.json({ ok: true, license: license.rows[0] });
   } catch (err) {
     console.error("DASHBOARD LICENSE CURRENT ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.get("/licenses/available", authUser, async (req, res) => {
+  try {
+    const scope = getScopedFilters(req, res);
+    if (!scope) return;
+    const { businessId, branchId } = scope;
+    const backendId = String(req.query.backend_id || "").trim();
+    if (!backendId) {
+      return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "backend_id required" });
+    }
+
+    const backend = await pool.query(
+      `SELECT id, business_id, branch_id, machine_id
+       FROM backend_devices
+       WHERE id = $1`,
+      [backendId]
+    );
+    if (!backend.rows.length) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Backend not found" });
+    }
+    const backendRow = backend.rows[0];
+    if (String(backendRow.business_id || "") !== String(businessId || "")) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in business scope" });
+    }
+    if (branchId && String(backendRow.branch_id || "") !== String(branchId || "")) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in branch scope" });
+    }
+
+    const cols = await getBackendLicensesColumns();
+    const rows = await pool.query(
+      `
+      SELECT
+        bl.id,
+        bl.license_id,
+        bl.backend_id,
+        bl.business_id,
+        bl.branch_id,
+        bl.machine_id,
+        ${selectCol(cols, "plan_name", "plan_name")},
+        bl.plan,
+        ${selectCol(cols, "total_device_limit", "total_device_limit")},
+        bl.device_limit,
+        ${selectCol(cols, "license_status", "license_status")},
+        bl.status,
+        bl.issued_at,
+        bl.expires_at,
+        ${selectCol(cols, "approved_at", "approved_at")},
+        ${selectCol(cols, "updated_at", "updated_at")},
+        ${selectCol(cols, "request_id", "request_id")},
+        b.name AS business_name,
+        br.name AS branch_name,
+        COALESCE(bd.backend_name, bd.id::text) AS backend_name,
+        COALESCE(bl.machine_id, bd.machine_id) AS machine_id,
+        bd.installation_id::text AS device_id
+      FROM backend_licenses bl
+      LEFT JOIN LATERAL (
+        SELECT bd.*
+        FROM backend_devices bd
+        WHERE bd.id = bl.backend_id
+           OR (bl.machine_id IS NOT NULL AND bd.machine_id = bl.machine_id)
+        ORDER BY
+          CASE WHEN bd.id = bl.backend_id THEN 0 ELSE 1 END,
+          bd.last_seen_at DESC NULLS LAST,
+          bd.created_at DESC
+        LIMIT 1
+      ) bd ON TRUE
+      LEFT JOIN businesses b ON b.id = bl.business_id
+      LEFT JOIN branches br ON br.id = bl.branch_id
+      WHERE bl.backend_id = $1
+         OR (bl.machine_id IS NOT NULL AND bl.machine_id = $2)
+      ORDER BY COALESCE(${selectColExpr(cols, "approved_at")}, ${selectColExpr(cols, "updated_at")}, bl.issued_at) DESC NULLS LAST
+      LIMIT 20
+      `,
+      [backendId, backendRow.machine_id || null]
+    );
+
+    const out = (rows.rows || []).map((r) => ({
+      id: r.id,
+      license_id: r.license_id,
+      business_name: r.business_name || null,
+      branch_name: r.branch_name || null,
+      backend_name: r.backend_name || null,
+      backend_id: r.backend_id || null,
+      machine_id: r.machine_id || null,
+      device_id: r.device_id || null,
+      plan: r.plan_name || r.plan || null,
+      device_limit: r.total_device_limit ?? r.device_limit ?? null,
+      status: r.license_status || r.status || null,
+      issued_at: r.issued_at || null,
+      expires_at: r.expires_at || null,
+      published_at: r.approved_at || r.updated_at || r.issued_at || null,
+      request_id: r.request_id || null
+    }));
+
+    return res.json({ ok: true, rows: out });
+  } catch (err) {
+    console.error("DASHBOARD AVAILABLE LICENSES ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.get("/licenses/available/:id/json", authUser, async (req, res) => {
+  try {
+    const scope = getScopedFilters(req, res);
+    if (!scope) return;
+    const { businessId, branchId } = scope;
+    const id = String(req.params.id || "").trim();
+    if (!id) {
+      return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "license id required" });
+    }
+
+    const cols = await getBackendLicensesColumns();
+    const row = await pool.query(
+      `SELECT
+         bl.id,
+         bl.license_id,
+         bl.backend_id,
+         bl.business_id,
+         bl.branch_id,
+         ${selectCol(cols, "payload_b64", "payload_b64")},
+         ${selectCol(cols, "sig_b64", "sig_b64")},
+         bl.issued_at,
+         bl.expires_at,
+         ${selectCol(cols, "license_status", "license_status")},
+         bl.status
+       FROM backend_licenses bl
+       WHERE bl.id = $1
+       LIMIT 1`,
+      [id]
+    );
+    if (!row.rows.length) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+    }
+    const lic = row.rows[0];
+    if (String(lic.business_id || "") !== String(businessId || "")) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN" });
+    }
+    if (branchId && String(lic.branch_id || "") !== String(branchId || "")) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN" });
+    }
+    const expectedBackend = String(req.query.backend_id || "").trim();
+    if (expectedBackend && String(lic.backend_id || "") !== expectedBackend) {
+      return res.status(403).json({ ok: false, error: "FORBIDDEN" });
+    }
+
+    const license = buildLicenseJson(lic);
+    return res.json({ ok: true, license });
+  } catch (err) {
+    console.error("DASHBOARD LICENSE JSON ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
 });
