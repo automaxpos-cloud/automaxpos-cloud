@@ -360,9 +360,19 @@ async function status(req, res) {
   }
   try {
     const backendRow = await pool.query(
-      `SELECT id, business_id, branch_id, machine_id, backend_name, installation_id
-       FROM backend_devices
-       WHERE id = $1`,
+      `SELECT
+         bd.id,
+         bd.business_id,
+         bd.branch_id,
+         bd.machine_id,
+         bd.backend_name,
+         bd.installation_id,
+         b.name AS business_name,
+         br.name AS branch_name
+       FROM backend_devices bd
+       LEFT JOIN businesses b ON b.id = bd.business_id
+       LEFT JOIN branches br ON br.id = bd.branch_id
+       WHERE bd.id = $1`,
       [backend.id]
     );
     const identity = backendRow.rows[0] || {};
@@ -432,6 +442,14 @@ async function status(req, res) {
       activation_status: activationStatus,
       demo_status: demoStatus,
       demo_expires_at: demoExpiresAt,
+      backend_id: identity.id || null,
+      backend_name: identity.backend_name || null,
+      business_id: identity.business_id || null,
+      business_name: identity.business_name || null,
+      branch_id: identity.branch_id || null,
+      branch_name: identity.branch_name || null,
+      machine_id: identity.machine_id || null,
+      device_id: identity.installation_id || null,
       license_id: lic?.license_id || null,
       plan: lic ? licenseService.normalizePlan(lic.plan, lic.device_limit) : (lastReq?.requested_plan || null),
       device_limit: lic?.device_limit ?? lastReq?.device_count ?? null,
