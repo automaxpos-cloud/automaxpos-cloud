@@ -482,16 +482,21 @@ async function getBackendLicenseForPull({ backendId, businessId, branchId, machi
   const activeWhere = `UPPER(${statusExpr}) = 'ACTIVE'`;
   const joinBackend = deviceId || backendName;
   const joinSql = joinBackend ? "LEFT JOIN backend_devices bd ON bd.id = bl.backend_id" : "";
+  const signedFilter = (cols.has("payload_b64") && cols.has("sig_b64"))
+    ? "bl.payload_b64 IS NOT NULL AND bl.sig_b64 IS NOT NULL"
+    : null;
 
   const baseSql = `SELECT bl.* FROM backend_licenses bl ${joinSql} WHERE ${where.join(" AND ")}`;
+  const activeSql = signedFilter ? `${baseSql} AND ${signedFilter} AND ${activeWhere}` : `${baseSql} AND ${activeWhere}`;
   const activeRes = await query(
-    `${baseSql} AND ${activeWhere} ORDER BY ${orderBy} LIMIT 1`,
+    `${activeSql} ORDER BY ${orderBy} LIMIT 1`,
     params
   );
   if (activeRes.rows.length) return activeRes.rows[0];
 
+  const anySql = signedFilter ? `${baseSql} AND ${signedFilter}` : baseSql;
   const anyRes = await query(
-    `${baseSql} ORDER BY ${orderBy} LIMIT 1`,
+    `${anySql} ORDER BY ${orderBy} LIMIT 1`,
     params
   );
   return anyRes.rows[0] || null;
