@@ -1,0 +1,24 @@
+name: deploy-all
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger backend deploy
+        run: curl -sS -X POST "$RENDER_HOOK_BACKEND"
+        env:
+          RENDER_HOOK_BACKEND: ${{ secrets.RENDER_HOOK_BACKEND }}
+      - name: Trigger cloud deploy
+        run: curl -sS -X POST "$RENDER_HOOK_CLOUD"
+        env:
+          RENDER_HOOK_CLOUD: ${{ secrets.RENDER_HOOK_CLOUD }}
+      - name: Trigger vendor admin deploy
+        run: curl -sS -X POST "$RENDER_HOOK_VENDOR_ADMIN"
+        env:
+          RENDER_HOOK_VENDOR_ADMIN: ${{ secrets.RENDER_HOOK_VENDOR_ADMIN }}
