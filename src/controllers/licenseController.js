@@ -374,6 +374,33 @@ async function status(req, res) {
       backendName: identity.backend_name,
       deviceId: identity.installation_id
     });
+    let activationStatus = null;
+    let demoStatus = null;
+    let demoExpiresAt = null;
+    try {
+      const hasActs = await pool.query(`SELECT to_regclass('public.license_activations') AS t`);
+      if (hasActs.rows[0]?.t && lic?.license_id) {
+        const act = await pool.query(
+          `SELECT status FROM license_activations WHERE license_id=$1 ORDER BY activated_at DESC LIMIT 1`,
+          [lic.license_id]
+        );
+        activationStatus = act.rows[0]?.status || null;
+      }
+    } catch (_) {}
+    try {
+      const hasDemo = await pool.query(`SELECT to_regclass('public.backend_demo_records') AS t`);
+      if (hasDemo.rows[0]?.t && identity.machine_id) {
+        const demo = await pool.query(
+          `SELECT status, demo_expires_at FROM backend_demo_records WHERE machine_id=$1 LIMIT 1`,
+          [identity.machine_id]
+        );
+        demoStatus = demo.rows[0]?.status || null;
+        demoExpiresAt = demo.rows[0]?.demo_expires_at ? toEpochSeconds(demo.rows[0].demo_expires_at) : null;
+        if (demoExpiresAt && demoExpiresAt * 1000 < Date.now()) {
+          demoStatus = "EXPIRED";
+        }
+      }
+    } catch (_) {}
     const reqRow = await pool.query(
       `
       SELECT status, requested_plan, device_count, requested_at
