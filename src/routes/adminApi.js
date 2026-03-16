@@ -178,6 +178,99 @@ function selectColExpr(cols, name) {
   return cols.has(name) ? `bl.${name}` : "NULL";
 }
 
+function buildBackendLicenseUpsert(cols, data) {
+  const columns = [];
+  const placeholders = [];
+  const values = [];
+  const updates = [];
+  const add = (col, value, opts = {}) => {
+    if (!cols.has(col)) return;
+    columns.push(col);
+    if (opts.raw) {
+      placeholders.push(opts.raw);
+    } else {
+      values.push(value);
+      placeholders.push(`$${values.length}`);
+    }
+    if (opts.update) {
+      updates.push(opts.update);
+    } else if (!opts.skipUpdate) {
+      updates.push(`${col} = EXCLUDED.${col}`);
+    }
+  };
+
+  add("business_id", data.business_id);
+  add("branch_id", data.branch_id);
+  add("backend_id", data.backend_id);
+  add("machine_id", data.machine_id);
+  add("license_id", data.license_id);
+  add("plan", data.plan);
+  add("device_limit", data.device_limit);
+  add("issued_at", data.issued_at);
+  add("expires_at", data.expires_at);
+  add("grace_ends_at", data.grace_ends_at);
+  add("features_json", data.features_json);
+  add("payload_b64", data.payload_b64);
+  add("sig_b64", data.sig_b64);
+  add("status", data.status);
+  add("plan_name", data.plan_name);
+  add("base_device_limit", data.base_device_limit);
+  add("extra_device_count", data.extra_device_count);
+  add("total_device_limit", data.total_device_limit);
+  add("license_version", data.license_version);
+  add("previous_license_id", data.previous_license_id);
+  add("change_reason", data.change_reason);
+  add("license_status", data.license_status);
+  add("request_id", data.request_id);
+  add("hardware_bundle", data.hardware_bundle);
+  add("quoted_price", data.quoted_price);
+
+  add("issued_by_admin_id", data.issued_by_admin_id, {
+    update: "issued_by_admin_id = COALESCE(EXCLUDED.issued_by_admin_id, backend_licenses.issued_by_admin_id)"
+  });
+  add("issued_by_name", data.issued_by_name, {
+    update: "issued_by_name = COALESCE(EXCLUDED.issued_by_name, backend_licenses.issued_by_name)"
+  });
+  add("issued_by_email", data.issued_by_email, {
+    update: "issued_by_email = COALESCE(EXCLUDED.issued_by_email, backend_licenses.issued_by_email)"
+  });
+  add("approved_by_admin_id", data.approved_by_admin_id, {
+    update: "approved_by_admin_id = COALESCE(EXCLUDED.approved_by_admin_id, backend_licenses.approved_by_admin_id)"
+  });
+  add("approved_at", data.approved_at, {
+    update: "approved_at = COALESCE(EXCLUDED.approved_at, backend_licenses.approved_at)"
+  });
+  add("updated_by_admin_id", data.updated_by_admin_id, {
+    update: "updated_by_admin_id = COALESCE(EXCLUDED.updated_by_admin_id, backend_licenses.updated_by_admin_id)"
+  });
+  add("reissued_by_admin_id", data.reissued_by_admin_id, {
+    update: "reissued_by_admin_id = COALESCE(EXCLUDED.reissued_by_admin_id, backend_licenses.reissued_by_admin_id)"
+  });
+  add("reissued_at", data.reissued_at, {
+    update: "reissued_at = COALESCE(EXCLUDED.reissued_at, backend_licenses.reissued_at)"
+  });
+
+  if (cols.has("updated_at")) {
+    columns.push("updated_at");
+    placeholders.push("NOW()");
+    updates.push("updated_at = NOW()");
+  }
+
+  if (!columns.includes("backend_id")) {
+    throw new Error("BACKEND_LICENSES_BACKEND_ID_MISSING");
+  }
+
+  return {
+    text: `
+      INSERT INTO backend_licenses (${columns.join(", ")})
+      VALUES (${placeholders.join(", ")})
+      ON CONFLICT (backend_id) DO UPDATE SET
+        ${updates.join(", ")}
+    `,
+    values
+  };
+}
+
 async function getCloudUsersColumns() {
   const res = await pool.query(
     `SELECT column_name
@@ -1076,119 +1169,43 @@ router.post(
     const issuerName = req.admin?.full_name || req.admin?.username || null;
     const issuerEmail = req.admin?.email || null;
 
-    await pool.query(
-      `
-      INSERT INTO backend_licenses (
-        business_id,
-        branch_id,
-        backend_id,
-        machine_id,
-        license_id,
-        plan,
-        device_limit,
-        issued_at,
-        expires_at,
-        grace_ends_at,
-        features_json,
-        payload_b64,
-        sig_b64,
-        status,
-        plan_name,
-        base_device_limit,
-        extra_device_count,
-        total_device_limit,
-        license_version,
-        previous_license_id,
-        change_reason,
-        license_status,
-        request_id,
-        hardware_bundle,
-        quoted_price,
-        issued_by_admin_id,
-        issued_by_name,
-        issued_by_email,
-        approved_by_admin_id,
-        approved_at,
-        updated_by_admin_id,
-        reissued_by_admin_id,
-        reissued_at,
-        updated_at
-      ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,
-        $8,$9,$10,
-        $11,$12,$13,'ACTIVE',
-        $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
-        $25,$26,$27,$28,$29,$30,$31,$32,
-        NOW()
-      )
-      ON CONFLICT (backend_id) DO UPDATE SET
-        machine_id = EXCLUDED.machine_id,
-        license_id = EXCLUDED.license_id,
-        plan = EXCLUDED.plan,
-        device_limit = EXCLUDED.device_limit,
-        issued_at = EXCLUDED.issued_at,
-        expires_at = EXCLUDED.expires_at,
-        grace_ends_at = EXCLUDED.grace_ends_at,
-        features_json = EXCLUDED.features_json,
-        payload_b64 = EXCLUDED.payload_b64,
-        sig_b64 = EXCLUDED.sig_b64,
-        status = EXCLUDED.status,
-        plan_name = EXCLUDED.plan_name,
-        base_device_limit = EXCLUDED.base_device_limit,
-        extra_device_count = EXCLUDED.extra_device_count,
-        total_device_limit = EXCLUDED.total_device_limit,
-        license_version = EXCLUDED.license_version,
-        previous_license_id = EXCLUDED.previous_license_id,
-        change_reason = EXCLUDED.change_reason,
-        license_status = EXCLUDED.license_status,
-        request_id = EXCLUDED.request_id,
-        hardware_bundle = EXCLUDED.hardware_bundle,
-        quoted_price = EXCLUDED.quoted_price,
-        issued_by_admin_id = COALESCE(EXCLUDED.issued_by_admin_id, backend_licenses.issued_by_admin_id),
-        issued_by_name = COALESCE(EXCLUDED.issued_by_name, backend_licenses.issued_by_name),
-        issued_by_email = COALESCE(EXCLUDED.issued_by_email, backend_licenses.issued_by_email),
-        approved_by_admin_id = COALESCE(EXCLUDED.approved_by_admin_id, backend_licenses.approved_by_admin_id),
-        approved_at = COALESCE(EXCLUDED.approved_at, backend_licenses.approved_at),
-        updated_by_admin_id = COALESCE(EXCLUDED.updated_by_admin_id, backend_licenses.updated_by_admin_id),
-        reissued_by_admin_id = COALESCE(EXCLUDED.reissued_by_admin_id, backend_licenses.reissued_by_admin_id),
-        reissued_at = COALESCE(EXCLUDED.reissued_at, backend_licenses.reissued_at),
-        updated_at = NOW()
-      `,
-      [
-        row.business_id,
-        row.branch_id,
-        backendId,
-        machineId || null,
-        payloadLicenseId,
-        planName,
-        totalDeviceLimit,
-        issuedAt,
-        expiresAt,
-        graceEndsAt,
-        JSON.stringify(features),
-        payloadB64,
-        sigB64,
-        planName,
-        baseDeviceLimit,
-        extraDeviceCount,
-        totalDeviceLimit,
-        licenseVersion,
-        previousLicenseId,
-        changeReason,
-        licenseStatus,
-        row.request_id || null,
-        row.hardware_bundle || null,
-        row.amount_expected != null ? Number(row.amount_expected) : null,
-        issuerId,
-        issuerName,
-        issuerEmail,
-        issuerId,
-        issuerId ? new Date() : null,
-        issuerId,
-        changeReason === "correction" ? issuerId : null,
-        changeReason === "correction" ? new Date() : null
-      ]
-    );
+    const cols = await getBackendLicensesColumns();
+    const upsert = buildBackendLicenseUpsert(cols, {
+      business_id: row.business_id,
+      branch_id: row.branch_id,
+      backend_id: backendId,
+      machine_id: machineId || null,
+      license_id: payloadLicenseId,
+      plan: planName,
+      device_limit: totalDeviceLimit,
+      issued_at: issuedAt,
+      expires_at: expiresAt,
+      grace_ends_at: graceEndsAt,
+      features_json: JSON.stringify(features),
+      payload_b64: payloadB64,
+      sig_b64: sigB64,
+      status: "ACTIVE",
+      plan_name: planName,
+      base_device_limit: baseDeviceLimit,
+      extra_device_count: extraDeviceCount,
+      total_device_limit: totalDeviceLimit,
+      license_version: licenseVersion,
+      previous_license_id: previousLicenseId,
+      change_reason: changeReason,
+      license_status: licenseStatus,
+      request_id: row.request_id || null,
+      hardware_bundle: row.hardware_bundle || null,
+      quoted_price: row.amount_expected != null ? Number(row.amount_expected) : null,
+      issued_by_admin_id: issuerId,
+      issued_by_name: issuerName,
+      issued_by_email: issuerEmail,
+      approved_by_admin_id: issuerId,
+      approved_at: issuerId ? new Date() : null,
+      updated_by_admin_id: issuerId,
+      reissued_by_admin_id: changeReason === "correction" ? issuerId : null,
+      reissued_at: changeReason === "correction" ? new Date() : null
+    });
+    await pool.query(upsert.text, upsert.values);
 
     await pool.query(
       `UPDATE license_requests
