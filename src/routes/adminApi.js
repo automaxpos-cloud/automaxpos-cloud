@@ -169,6 +169,19 @@ async function getBackendLicensesColumns() {
   return new Set(res.rows.map((r) => r.column_name));
 }
 
+let licenseRequestsColumnsCache = null;
+async function getLicenseRequestsColumns() {
+  if (licenseRequestsColumnsCache) return licenseRequestsColumnsCache;
+  const res = await pool.query(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema='public'
+       AND table_name='license_requests'`
+  );
+  licenseRequestsColumnsCache = new Set(res.rows.map((r) => r.column_name));
+  return licenseRequestsColumnsCache;
+}
+
 function selectCol(cols, name, alias) {
   if (cols.has(name)) return `bl.${name}${alias ? " AS " + alias : ""}`;
   return `NULL${alias ? " AS " + alias : ""}`;
@@ -268,6 +281,44 @@ function buildBackendLicenseUpsert(cols, data) {
         ${updates.join(", ")}
     `,
     values
+  };
+}
+
+function buildLicenseRequestUpdate(cols, id, data) {
+  const sets = [];
+  const values = [];
+  const add = (col, value, opts = {}) => {
+    if (!cols.has(col)) return;
+    if (opts.raw) {
+      sets.push(`${col}=${opts.raw}`);
+      return;
+    }
+    values.push(value);
+    sets.push(`${col}=$${values.length}`);
+  };
+
+  add("status", data.status);
+  if (data.request_status) {
+    add("request_status", null, { raw: `COALESCE(request_status,'${data.request_status}')` });
+  }
+  add("approved_by_admin_id", data.approved_by_admin_id);
+  if (data.approved_at_now) {
+    add("approved_at", null, { raw: "NOW()" });
+  }
+  if (data.reviewed_at_now) {
+    add("reviewed_at", null, { raw: "NOW()" });
+  }
+  if (data.updated_at_now) {
+    add("updated_at", null, { raw: "NOW()" });
+  }
+
+  if (!sets.length) {
+    return null;
+  }
+  const whereIndex = values.length + 1;
+  return {
+    text: `UPDATE license_requests SET ${sets.join(", ")} WHERE id=$${whereIndex}`,
+    values: [...values, id]
   };
 }
 
@@ -945,17 +996,18 @@ router.post(
       updatedBy: req.admin
     });
 
-    await pool.query(
-      `UPDATE license_requests
-       SET status='LICENSE_READY',
-           request_status=COALESCE(request_status,'approved'),
-           approved_by_admin_id=$2,
-           approved_at=NOW(),
-           reviewed_at=NOW(),
-           updated_at=NOW()
-       WHERE id=$1`,
-      [requestId, req.admin?.user_id || null]
-    );
+    const lrCols = await getLicenseRequestsColumns();
+    const lrUpdate = buildLicenseRequestUpdate(lrCols, requestId, {
+      status: "LICENSE_READY",
+      request_status: "approved",
+      approved_by_admin_id: req.admin?.user_id || null,
+      approved_at_now: true,
+      reviewed_at_now: true,
+      updated_at_now: true
+    });
+    if (lrUpdate) {
+      await pool.query(lrUpdate.text, lrUpdate.values);
+    }
     await logAudit({
       admin: req.admin,
       action: "LICENSE_APPROVED",
@@ -1207,17 +1259,18 @@ router.post(
     });
     await pool.query(upsert.text, upsert.values);
 
-    await pool.query(
-      `UPDATE license_requests
-       SET status='LICENSE_READY',
-           request_status=COALESCE(request_status,'approved'),
-           approved_by_admin_id=$2,
-           approved_at=NOW(),
-           reviewed_at=NOW(),
-           updated_at=NOW()
-       WHERE id=$1`,
-      [requestId, issuerId]
-    );
+    const lrCols = await getLicenseRequestsColumns();
+    const lrUpdate = buildLicenseRequestUpdate(lrCols, requestId, {
+      status: "LICENSE_READY",
+      request_status: "approved",
+      approved_by_admin_id: issuerId,
+      approved_at_now: true,
+      reviewed_at_now: true,
+      updated_at_now: true
+    });
+    if (lrUpdate) {
+      await pool.query(lrUpdate.text, lrUpdate.values);
+    }
 
     await logAudit({
       admin: req.admin,
