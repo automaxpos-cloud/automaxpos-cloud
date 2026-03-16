@@ -423,6 +423,72 @@ async function getBackendLicense(backendId) {
   return res.rows[0] || null;
 }
 
+function buildLicenseOrderExpr(cols, backendIdParamIndex) {
+  const parts = [];
+  if (backendIdParamIndex) {
+    parts.push(`CASE WHEN bl.backend_id = $${backendIdParamIndex} THEN 0 ELSE 1 END`);
+  }
+  const approvedExpr = cols.has("approved_at") ? "bl.approved_at" : "NULL";
+  const updatedExpr = cols.has("updated_at") ? "bl.updated_at" : "NULL";
+  parts.push(`COALESCE(${approvedExpr}, ${updatedExpr}, bl.issued_at) DESC NULLS LAST`);
+  return parts.join(", ");
+}
+
+function buildLicenseStatusExpr(cols) {
+  if (cols.has("license_status")) {
+    return "COALESCE(bl.license_status, bl.status)";
+  }
+  return "bl.status";
+}
+
+async function getBackendLicenseForPull({ backendId, businessId, branchId, machineId } = {}) {
+  const cols = await getBackendLicensesColumns();
+  const statusExpr = buildLicenseStatusExpr(cols);
+  const params = [];
+  const where = [];
+  let backendIdParamIndex = null;
+
+  if (businessId) {
+    params.push(businessId);
+    where.push(`bl.business_id = $${params.length}`);
+  }
+  if (branchId) {
+    params.push(branchId);
+    where.push(`bl.branch_id = $${params.length}`);
+  }
+
+  const idParts = [];
+  if (backendId) {
+    params.push(backendId);
+    backendIdParamIndex = params.length;
+    idParts.push(`bl.backend_id = $${backendIdParamIndex}`);
+  }
+  if (machineId) {
+    params.push(machineId);
+    idParts.push(`(bl.machine_id IS NOT NULL AND bl.machine_id = $${params.length})`);
+  }
+  if (idParts.length) {
+    where.push(`(${idParts.join(" OR ")})`);
+  }
+  if (!where.length) return null;
+
+  const orderBy = buildLicenseOrderExpr(cols, backendIdParamIndex);
+  const activeWhere = `UPPER(${statusExpr}) = 'ACTIVE'`;
+
+  const baseSql = `SELECT * FROM backend_licenses bl WHERE ${where.join(" AND ")}`;
+  const activeRes = await query(
+    `${baseSql} AND ${activeWhere} ORDER BY ${orderBy} LIMIT 1`,
+    params
+  );
+  if (activeRes.rows.length) return activeRes.rows[0];
+
+  const anyRes = await query(
+    `${baseSql} ORDER BY ${orderBy} LIMIT 1`,
+    params
+  );
+  return anyRes.rows[0] || null;
+}
+
 async function issueBackendLicense({
   backendId,
   issueType,
@@ -630,6 +696,7 @@ module.exports = {
   PLAN_LIMITS,
   normalizePlan,
   getBackendLicense,
+  getBackendLicenseForPull,
   issueBackendLicense,
   verifyPayloadSignature,
   verifyPayloadSignatureDetailed
