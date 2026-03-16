@@ -2585,10 +2585,24 @@ function showSection(name) {
           const action = btn.dataset.action;
           if (!id || !action) return;
           const backendId = byId("license_backend")?.value || "";
+          const filters = currentFilters();
+          const businessId =
+            filters.business_id ||
+            state.user?.business_id ||
+            localStorage.getItem("automax_dashboard_business_id") ||
+            byId("license_business_id")?.value ||
+            "";
           const status = byId("license_available_status");
           if (status) status.textContent = "Loading license...";
-          const url = "/api/dashboard/licenses/available/" + encodeURIComponent(id) + "/json" +
-            (backendId ? "?backend_id=" + encodeURIComponent(backendId) : "");
+          if (!businessId) {
+            if (status) status.textContent = "No licenses published yet.";
+            return;
+          }
+          const params = new URLSearchParams();
+          params.set("business_id", businessId);
+          if (filters.branch_id) params.set("branch_id", filters.branch_id);
+          if (backendId) params.set("backend_id", backendId);
+          const url = "/api/dashboard/licenses/available/" + encodeURIComponent(id) + "/json?" + params.toString();
           const res = await fetch(url, { headers: authHeaders() });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
