@@ -73,12 +73,34 @@ function extractSignedLicenseInput(raw) {
     return { error: "MISSING_SIGNATURE" };
   }
 
-  return { payloadJson, payloadObj, payloadB64, sigB64 };
+  let keyId = null;
+  if (src.key_id) keyId = String(src.key_id).trim();
+  if (!keyId && src.signature && typeof src.signature === "object") {
+    keyId = String(src.signature.key_id || "").trim();
+  }
+  if (!keyId && payloadObj && payloadObj.key_id) {
+    keyId = String(payloadObj.key_id || "").trim();
+  }
+
+  return { payloadJson, payloadObj, payloadB64, sigB64, keyId };
 }
 
 function parseIsoDate(value) {
   if (!value) return null;
-  const d = new Date(value);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const num = value;
+    if (num > 1e12) return new Date(num);
+    if (num > 1e9) return new Date(num * 1000);
+  }
+  const raw = String(value || "").trim();
+  if (raw && /^\d+$/.test(raw)) {
+    const num = Number(raw);
+    if (Number.isFinite(num)) {
+      if (num > 1e12) return new Date(num);
+      if (num > 1e9) return new Date(num * 1000);
+    }
+  }
+  const d = new Date(raw || value);
   if (Number.isNaN(d.getTime())) return null;
   return d;
 }
@@ -984,8 +1006,17 @@ router.post(
       });
     }
 
-    const sigOk = licenseService.verifyPayloadSignature(payloadJson, sigB64);
-    if (!sigOk) {
+    const sigCheck = licenseService.verifyPayloadSignatureDetailed(payloadJson, sigB64, parsed.keyId || payload?.key_id || null);
+    if (!sigCheck.ok) {
+      // eslint-disable-next-line no-console
+      console.warn("LICENSE SIGNATURE VERIFY FAILED:", {
+        request_id: row.request_id,
+        backend_id: backendId,
+        key_id: sigCheck.key_id,
+        reason: sigCheck.reason,
+        source: sigCheck.source,
+        tried: sigCheck.tried
+      });
       return res.status(400).json({
         ok: false,
         error: "INVALID_SIGNATURE",

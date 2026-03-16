@@ -25,6 +25,20 @@ const DEFAULT_FEATURES = {
   multi_user: true
 };
 
+const BUILTIN_PUBLIC_KEYS = {
+  "jpmax-license-key-2026-01": [
+    "-----BEGIN PUBLIC KEY-----",
+    "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2TDiRbHDHq/Ldum/gR0v",
+    "C8AyYMObhTsYzDwXNroXCzJw30fmF9JEaC7EEq+puQMKnXtWTwn2Woo2hDEp6eyC",
+    "UdyMFtyqygrWCvAidfJAIDoStqeY9yMyflAftmyvKPdDAngv7qZVxHVUQHo+uh2r",
+    "uV4lZEagJFLsKaefNJ9VgI38nPqymKpyIIDJFnSqLx9rT5CuWcmkumWZBwRL526S",
+    "MlOYSK0j9emD835x+2uWJUcsrwJ94MLMYJm+/eY2yokR6U9ys0bdrqJSaUW4LD0e",
+    "cvnhOJO4vsaNxazjXhfjZkZfzf74UafnlVnZ8Jh66xrajQjvz1lFZHC+tOAoCOpO",
+    "xQIDAQAB",
+    "-----END PUBLIC KEY-----"
+  ].join("\n")
+};
+
 function derivePlanKeyFromLimit(limit) {
   const n = Number(limit);
   if (!Number.isFinite(n)) return "";
@@ -122,6 +136,75 @@ function getPublicKeyPem() {
   }
 }
 
+function sanitizeKeyId(keyId) {
+  return String(keyId || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
+function tryLoadPemFromValue(raw) {
+  if (!raw) return null;
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  if (text.includes("BEGIN")) {
+    return text.includes("\\n") ? text.replace(/\\n/g, "\n") : text;
+  }
+  try {
+    const maybePem = Buffer.from(text, "base64").toString("utf8");
+    if (maybePem.includes("BEGIN")) return maybePem;
+  } catch (_) {}
+  try {
+    const fs = require("fs");
+    if (fs.existsSync(text)) return fs.readFileSync(text, "utf8");
+  } catch (_) {}
+  return null;
+}
+
+function getPublicKeyPemForKeyId(keyId) {
+  const tried = [];
+  const normalized = sanitizeKeyId(keyId);
+  const mapRaw = process.env.LICENSE_PUBLIC_KEYS_JSON || process.env.LICENSE_PUBLIC_KEYS || "";
+  if (mapRaw) {
+    try {
+      const map = JSON.parse(mapRaw);
+      if (map && typeof map === "object") {
+        if (keyId && map[keyId]) {
+          const pem = tryLoadPemFromValue(map[keyId]);
+          if (pem) return { pem, source: "map:" + keyId, tried };
+          tried.push("map:" + keyId);
+        }
+        if (normalized && map[normalized]) {
+          const pem = tryLoadPemFromValue(map[normalized]);
+          if (pem) return { pem, source: "map:" + normalized, tried };
+          tried.push("map:" + normalized);
+        }
+      }
+    } catch (_) {
+      tried.push("map:parse_error");
+    }
+  }
+  if (normalized) {
+    const envKeys = [
+      "LICENSE_PUBLIC_KEY_PEM_" + normalized,
+      "LICENSE_PUBLIC_KEY_" + normalized,
+      "LICENSE_PUBLIC_KEY_B64_" + normalized,
+      "LICENSE_PUBLIC_KEY_PATH_" + normalized
+    ];
+    for (const envKey of envKeys) {
+      const pem = tryLoadPemFromValue(process.env[envKey] || "");
+      if (pem) return { pem, source: "env:" + envKey, tried };
+      tried.push("env:" + envKey);
+    }
+  }
+  if (keyId && BUILTIN_PUBLIC_KEYS[keyId]) {
+    return { pem: BUILTIN_PUBLIC_KEYS[keyId], source: "builtin:" + keyId, tried };
+  }
+  try {
+    const pem = getPublicKeyPem();
+    return { pem, source: "default", tried };
+  } catch (err) {
+    return { pem: null, source: "default", tried, error: err?.message || "LICENSE_PUBLIC_KEY_MISSING" };
+  }
+}
+
 function signPayload(payload) {
   const payloadJson = JSON.stringify(payload);
   const payloadBytes = Buffer.from(payloadJson, "utf8");
@@ -196,13 +279,24 @@ function buildLicensePayload({
 }
 
 function verifyPayloadSignature(payloadJson, sigB64) {
-  if (!payloadJson || !sigB64) return false;
+  return verifyPayloadSignatureDetailed(payloadJson, sigB64).ok;
+}
+
+function verifyPayloadSignatureDetailed(payloadJson, sigB64, keyId) {
+  if (!payloadJson || !sigB64) {
+    return { ok: false, reason: "MISSING_INPUT", key_id: keyId || null, source: null, tried: [] };
+  }
   try {
     const payloadBytes = Buffer.from(payloadJson, "utf8");
     const sigBytes = Buffer.from(sigB64, "base64");
-    return crypto.verify("RSA-SHA256", payloadBytes, getPublicKeyPem(), sigBytes);
+    const pub = getPublicKeyPemForKeyId(keyId);
+    if (!pub?.pem) {
+      return { ok: false, reason: pub?.error || "PUBLIC_KEY_MISSING", key_id: keyId || null, source: pub?.source || null, tried: pub?.tried || [] };
+    }
+    const ok = crypto.verify("RSA-SHA256", payloadBytes, pub.pem, sigBytes);
+    return { ok, reason: ok ? null : "INVALID_SIGNATURE", key_id: keyId || null, source: pub.source || null, tried: pub.tried || [] };
   } catch (_err) {
-    return false;
+    return { ok: false, reason: "INVALID_SIGNATURE", key_id: keyId || null, source: null, tried: [] };
   }
 }
 
@@ -506,5 +600,6 @@ module.exports = {
   normalizePlan,
   getBackendLicense,
   issueBackendLicense,
-  verifyPayloadSignature
+  verifyPayloadSignature,
+  verifyPayloadSignatureDetailed
 };
