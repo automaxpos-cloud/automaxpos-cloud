@@ -403,16 +403,16 @@ router.get("/licenses/current", authUser, async (req, res) => {
     if (!license.rows.length) {
       return res.json({ ok: true, license: null });
     }
-    const row = license.rows[0];
+    const licenseRow = license.rows[0];
     return res.json({
       ok: true,
       license: {
-        license_id: row.license_id,
-        plan: row.plan,
-        device_limit: row.device_limit,
-        issued_at: row.issued_at,
-        expires_at: row.expires_at,
-        status: row.license_status || row.status || null
+        license_id: licenseRow.license_id,
+        plan: licenseRow.plan,
+        device_limit: licenseRow.device_limit,
+        issued_at: licenseRow.issued_at,
+        expires_at: licenseRow.expires_at,
+        status: licenseRow.license_status || licenseRow.status || null
       }
     });
   } catch (err) {
