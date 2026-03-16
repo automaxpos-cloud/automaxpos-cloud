@@ -446,7 +446,6 @@ async function getBackendLicenseForPull({ backendId, businessId, branchId, machi
   const statusExpr = buildLicenseStatusExpr(cols);
   const params = [];
   const where = [];
-  let backendIdParamIndex = null;
 
   if (businessId) {
     params.push(businessId);
@@ -460,22 +459,31 @@ async function getBackendLicenseForPull({ backendId, businessId, branchId, machi
   const idParts = [];
   if (backendId) {
     params.push(backendId);
-    backendIdParamIndex = params.length;
-    idParts.push(`bl.backend_id = $${backendIdParamIndex}`);
+    idParts.push(`bl.backend_id = $${params.length}`);
   }
   if (machineId) {
     params.push(machineId);
     idParts.push(`(bl.machine_id IS NOT NULL AND bl.machine_id = $${params.length})`);
+  }
+  if (deviceId) {
+    params.push(deviceId);
+    idParts.push(`(bd.installation_id IS NOT NULL AND bd.installation_id = $${params.length})`);
+  }
+  if (backendName) {
+    params.push(backendName);
+    idParts.push(`(bd.backend_name IS NOT NULL AND bd.backend_name = $${params.length})`);
   }
   if (idParts.length) {
     where.push(`(${idParts.join(" OR ")})`);
   }
   if (!where.length) return null;
 
-  const orderBy = buildLicenseOrderExpr(cols, backendIdParamIndex);
+  const orderBy = "bl.issued_at DESC NULLS LAST";
   const activeWhere = `UPPER(${statusExpr}) = 'ACTIVE'`;
+  const joinBackend = deviceId || backendName;
+  const joinSql = joinBackend ? "LEFT JOIN backend_devices bd ON bd.id = bl.backend_id" : "";
 
-  const baseSql = `SELECT * FROM backend_licenses bl WHERE ${where.join(" AND ")}`;
+  const baseSql = `SELECT bl.* FROM backend_licenses bl ${joinSql} WHERE ${where.join(" AND ")}`;
   const activeRes = await query(
     `${baseSql} AND ${activeWhere} ORDER BY ${orderBy} LIMIT 1`,
     params
@@ -486,54 +494,7 @@ async function getBackendLicenseForPull({ backendId, businessId, branchId, machi
     `${baseSql} ORDER BY ${orderBy} LIMIT 1`,
     params
   );
-  if (anyRes.rows.length) return anyRes.rows[0];
-
-  if (!deviceId && !backendName) return null;
-
-  const fallbackParams = [];
-  const fallbackWhere = [];
-  if (businessId) {
-    fallbackParams.push(businessId);
-    fallbackWhere.push(`bl.business_id = $${fallbackParams.length}`);
-  }
-  if (branchId) {
-    fallbackParams.push(branchId);
-    fallbackWhere.push(`bl.branch_id = $${fallbackParams.length}`);
-  }
-  let fallbackBackendIdIndex = null;
-  if (backendId) {
-    fallbackParams.push(backendId);
-    fallbackBackendIdIndex = fallbackParams.length;
-  }
-  const fallbackMatch = [];
-  if (deviceId) {
-    fallbackParams.push(deviceId);
-    fallbackMatch.push(`bd.installation_id = $${fallbackParams.length}`);
-  }
-  if (backendName) {
-    fallbackParams.push(backendName);
-    fallbackMatch.push(`bd.backend_name = $${fallbackParams.length}`);
-  }
-  fallbackWhere.push(`(${fallbackMatch.join(" OR ")})`);
-
-  const fallbackOrder = buildLicenseOrderExpr(cols, fallbackBackendIdIndex);
-  const fallbackBaseSql = `
-    SELECT bl.* 
-    FROM backend_licenses bl 
-    LEFT JOIN backend_devices bd ON bd.id = bl.backend_id
-    WHERE ${fallbackWhere.join(" AND ")}
-  `;
-  const fallbackActive = await query(
-    `${fallbackBaseSql} AND ${activeWhere} ORDER BY ${fallbackOrder} LIMIT 1`,
-    fallbackParams
-  );
-  if (fallbackActive.rows.length) return fallbackActive.rows[0];
-
-  const fallbackAny = await query(
-    `${fallbackBaseSql} ORDER BY ${fallbackOrder} LIMIT 1`,
-    fallbackParams
-  );
-  return fallbackAny.rows[0] || null;
+  return anyRes.rows[0] || null;
 }
 
 async function issueBackendLicense({
