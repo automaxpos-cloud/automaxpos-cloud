@@ -441,7 +441,7 @@ function buildLicenseStatusExpr(cols) {
   return "bl.status";
 }
 
-async function getBackendLicenseForPull({ backendId, businessId, branchId, machineId } = {}) {
+async function getBackendLicenseForPull({ backendId, businessId, branchId, machineId, backendName, deviceId } = {}) {
   const cols = await getBackendLicensesColumns();
   const statusExpr = buildLicenseStatusExpr(cols);
   const params = [];
@@ -486,7 +486,54 @@ async function getBackendLicenseForPull({ backendId, businessId, branchId, machi
     `${baseSql} ORDER BY ${orderBy} LIMIT 1`,
     params
   );
-  return anyRes.rows[0] || null;
+  if (anyRes.rows.length) return anyRes.rows[0];
+
+  if (!deviceId && !backendName) return null;
+
+  const fallbackParams = [];
+  const fallbackWhere = [];
+  if (businessId) {
+    fallbackParams.push(businessId);
+    fallbackWhere.push(`bl.business_id = $${fallbackParams.length}`);
+  }
+  if (branchId) {
+    fallbackParams.push(branchId);
+    fallbackWhere.push(`bl.branch_id = $${fallbackParams.length}`);
+  }
+  let fallbackBackendIdIndex = null;
+  if (backendId) {
+    fallbackParams.push(backendId);
+    fallbackBackendIdIndex = fallbackParams.length;
+  }
+  const fallbackMatch = [];
+  if (deviceId) {
+    fallbackParams.push(deviceId);
+    fallbackMatch.push(`bd.installation_id = $${fallbackParams.length}`);
+  }
+  if (backendName) {
+    fallbackParams.push(backendName);
+    fallbackMatch.push(`bd.backend_name = $${fallbackParams.length}`);
+  }
+  fallbackWhere.push(`(${fallbackMatch.join(" OR ")})`);
+
+  const fallbackOrder = buildLicenseOrderExpr(cols, fallbackBackendIdIndex);
+  const fallbackBaseSql = `
+    SELECT bl.* 
+    FROM backend_licenses bl 
+    LEFT JOIN backend_devices bd ON bd.id = bl.backend_id
+    WHERE ${fallbackWhere.join(" AND ")}
+  `;
+  const fallbackActive = await query(
+    `${fallbackBaseSql} AND ${activeWhere} ORDER BY ${fallbackOrder} LIMIT 1`,
+    fallbackParams
+  );
+  if (fallbackActive.rows.length) return fallbackActive.rows[0];
+
+  const fallbackAny = await query(
+    `${fallbackBaseSql} ORDER BY ${fallbackOrder} LIMIT 1`,
+    fallbackParams
+  );
+  return fallbackAny.rows[0] || null;
 }
 
 async function issueBackendLicense({

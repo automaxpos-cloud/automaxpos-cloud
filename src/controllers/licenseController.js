@@ -360,7 +360,7 @@ async function status(req, res) {
   }
   try {
     const backendRow = await pool.query(
-      `SELECT id, business_id, branch_id, machine_id
+      `SELECT id, business_id, branch_id, machine_id, backend_name, installation_id
        FROM backend_devices
        WHERE id = $1`,
       [backend.id]
@@ -370,7 +370,9 @@ async function status(req, res) {
       backendId: backend.id,
       businessId: identity.business_id,
       branchId: identity.branch_id,
-      machineId: identity.machine_id
+      machineId: identity.machine_id,
+      backendName: identity.backend_name,
+      deviceId: identity.installation_id
     });
     const reqRow = await pool.query(
       `
@@ -428,7 +430,7 @@ async function pull(req, res) {
   }
   try {
     const backendRow = await pool.query(
-      `SELECT id, business_id, branch_id, machine_id
+      `SELECT id, business_id, branch_id, machine_id, backend_name, installation_id
        FROM backend_devices
        WHERE id = $1`,
       [backend.id]
@@ -438,7 +440,9 @@ async function pull(req, res) {
       backendId: backend.id,
       businessId: identity.business_id,
       branchId: identity.branch_id,
-      machineId: identity.machine_id
+      machineId: identity.machine_id,
+      backendName: identity.backend_name,
+      deviceId: identity.installation_id
     });
     if (!lic) {
       return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "No license found" });
@@ -488,7 +492,7 @@ async function activate(req, res) {
   const backend = req.backend || {};
   try {
     const backendRow = await pool.query(
-      `SELECT id, business_id, branch_id, machine_id
+      `SELECT id, business_id, branch_id, machine_id, backend_name, installation_id
        FROM backend_devices
        WHERE id = $1`,
       [backend.id]
@@ -498,7 +502,9 @@ async function activate(req, res) {
       backendId: backend.id,
       businessId: identity.business_id,
       branchId: identity.branch_id,
-      machineId: identity.machine_id
+      machineId: identity.machine_id,
+      backendName: identity.backend_name,
+      deviceId: identity.installation_id
     });
     let activationStatus = null;
     let demoStatus = null;
