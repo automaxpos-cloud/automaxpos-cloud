@@ -2314,15 +2314,8 @@ function showSection(name) {
       const status = byId("license_available_status");
       if (status) status.textContent = "Loading...";
       const backendId = byId("license_backend")?.value || "";
-      if (!backendId) {
-        if (status) status.textContent = "Select a backend first.";
-        const empty = byId("license-available-empty");
-        if (empty) empty.style.display = "block";
-        const body = byId("license-available-body");
-        if (body) body.innerHTML = "";
-        return;
-      }
-      const url = "/api/dashboard/licenses/available?backend_id=" + encodeURIComponent(backendId);
+      const url = "/api/dashboard/licenses/available" +
+        (backendId ? "?backend_id=" + encodeURIComponent(backendId) : "");
       const res = await fetch(url, { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

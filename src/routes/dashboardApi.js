@@ -404,28 +404,48 @@ router.get("/licenses/available", authUser, async (req, res) => {
     if (!scope) return;
     const { businessId, branchId } = scope;
     const backendId = String(req.query.backend_id || "").trim();
-    if (!backendId) {
-      return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "backend_id required" });
-    }
-
-    const backend = await pool.query(
-      `SELECT id, business_id, branch_id, machine_id
-       FROM backend_devices
-       WHERE id = $1`,
-      [backendId]
-    );
-    if (!backend.rows.length) {
-      return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Backend not found" });
-    }
-    const backendRow = backend.rows[0];
-    if (String(backendRow.business_id || "") !== String(businessId || "")) {
-      return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in business scope" });
-    }
-    if (branchId && String(backendRow.branch_id || "") !== String(branchId || "")) {
-      return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in branch scope" });
+    let backendRow = null;
+    let backendMachineId = null;
+    if (backendId) {
+      const backend = await pool.query(
+        `SELECT id, business_id, branch_id, machine_id
+         FROM backend_devices
+         WHERE id = $1`,
+        [backendId]
+      );
+      if (!backend.rows.length) {
+        return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Backend not found" });
+      }
+      backendRow = backend.rows[0];
+      backendMachineId = backendRow.machine_id || null;
+      if (String(backendRow.business_id || "") !== String(businessId || "")) {
+        return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in business scope" });
+      }
+      if (branchId && String(backendRow.branch_id || "") !== String(branchId || "")) {
+        return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in branch scope" });
+      }
     }
 
     const cols = await getBackendLicensesColumns();
+    const where = [];
+    const params = [];
+    let i = 1;
+    where.push(`bl.business_id = $${i++}`);
+    params.push(businessId);
+    if (branchId) {
+      where.push(`bl.branch_id = $${i++}`);
+      params.push(branchId);
+    }
+    if (backendId) {
+      if (backendMachineId) {
+        where.push(`(bl.backend_id = $${i} OR (bl.machine_id IS NOT NULL AND bl.machine_id = $${i + 1}))`);
+        params.push(backendId, backendMachineId);
+        i += 2;
+      } else {
+        where.push(`bl.backend_id = $${i++}`);
+        params.push(backendId);
+      }
+    }
     const rows = await pool.query(
       `
       SELECT
@@ -465,12 +485,11 @@ router.get("/licenses/available", authUser, async (req, res) => {
       ) bd ON TRUE
       LEFT JOIN businesses b ON b.id = bl.business_id
       LEFT JOIN branches br ON br.id = bl.branch_id
-      WHERE bl.backend_id = $1
-         OR (bl.machine_id IS NOT NULL AND bl.machine_id = $2)
+      WHERE ${where.join(" AND ")}
       ORDER BY COALESCE(${selectColExpr(cols, "approved_at")}, ${selectColExpr(cols, "updated_at")}, bl.issued_at) DESC NULLS LAST
       LIMIT 20
       `,
-      [backendId, backendRow.machine_id || null]
+      params
     );
 
     const out = (rows.rows || []).map((r) => ({
