@@ -2912,7 +2912,7 @@ let activeRequestId = null;
           setManualFallbackStatus(data?.message || data?.error || "Attach failed.", "var(--bad)");
           return;
         }
-        setManualFallbackStatus("License attached. Backend can pull the license.", "var(--good)");
+        setManualFallbackStatus("License attached successfully. It is now available in Business Monitor.", "var(--good)");
         await loadRequests();
         await loadManualLicenses();
       });

@@ -753,11 +753,14 @@ router.get("/", (req, res) => {
 
       <div class="section">
         <h2>Available Licenses</h2>
+        <div class="muted" style="margin-bottom:8px;">
+          Licenses issued or attached by JP Max Admin are published here for Business Monitor to deliver to your backend.
+        </div>
         <div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
           <button class="btn" id="license_available_refresh" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Refresh</button>
           <div id="license_available_status" class="muted"></div>
         </div>
-        <div id="license-available-empty" class="empty" style="display:none;">No licenses published yet.</div>
+        <div id="license-available-empty" class="empty" style="display:none;">No licenses published to Business Monitor yet.</div>
         <table id="license-available-table" style="width:100%;border-collapse:collapse;margin-top:12px;">
           <thead>
             <tr>
@@ -2322,7 +2325,7 @@ function showSection(name) {
         byId("license_business_id")?.value ||
         "";
       if (!businessId) {
-        if (status) status.textContent = "No licenses published yet.";
+        if (status) status.textContent = "No licenses published to Business Monitor yet.";
         const empty = byId("license-available-empty");
         if (empty) empty.style.display = "block";
         const body = byId("license-available-body");
@@ -2343,7 +2346,7 @@ function showSection(name) {
       }
       const rows = Array.isArray(data.rows) ? data.rows : [];
       licenseAvailableMap = new Map(rows.map((r) => [String(r.id), r]));
-      if (status) status.textContent = rows.length + " rows";
+      if (status) status.textContent = rows.length ? (rows.length + " published licenses") : "No licenses published to Business Monitor yet.";
       const empty = byId("license-available-empty");
       if (empty) empty.style.display = rows.length ? "none" : "block";
       const body = byId("license-available-body");
