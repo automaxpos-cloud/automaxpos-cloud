@@ -70,9 +70,9 @@ async function current(req, res) {
     return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "backend context missing" });
   }
   try {
-    const lic = await licenseService.getBackendLicense(backendId);
+    const lic = await licenseService.getBackendLicenseForPull({ backendId });
     if (!lic) {
-      return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "License not found" });
+      return res.status(404).json({ ok: false, error: "NO_ACTIVE_LICENSE", message: "No active license found" });
     }
     return res.json({
       ok: true,
@@ -445,8 +445,12 @@ async function pull(req, res) {
       deviceId: identity.installation_id
     });
     if (!lic) {
+      // eslint-disable-next-line no-console
+      console.log("[LICENSE] pull no active license", { backend_id: backend.id });
       return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "No license found" });
     }
+    // eslint-disable-next-line no-console
+    console.log("[LICENSE] pull active license", { backend_id: backend.id, license_id: lic.license_id });
     await logAudit({
       adminUser: `backend:${backend.id}`,
       action: "LICENSE_PULLED",

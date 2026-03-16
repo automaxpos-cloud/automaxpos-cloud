@@ -2416,7 +2416,11 @@ let activeRequestId = null;
         }
         const id = btn.dataset.id;
         if (btn.dataset.action === "revoke") {
-          await fetch("/api/admin/licenses/" + id + "/revoke", { method: "POST", headers: authHeaders() });
+          const res = await fetch("/api/admin/licenses/" + id + "/revoke", { method: "POST", headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            return setToast(data?.message || data?.error || "Revoke failed.", "var(--bad)");
+          }
           setToast("License revoked.", "var(--warn)");
           await loadLicenses();
         }
@@ -2517,7 +2521,11 @@ let activeRequestId = null;
         if (!btn) return;
         const id = btn.dataset.id;
         if (btn.dataset.action === "revoke") {
-          await fetch("/api/admin/licenses/" + id + "/revoke", { method: "POST", headers: authHeaders() });
+          const res = await fetch("/api/admin/licenses/" + id + "/revoke", { method: "POST", headers: authHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            return setToast(data?.message || data?.error || "Revoke failed.", "var(--bad)");
+          }
           setToast("License revoked.", "var(--warn)");
           await loadManualLicenses();
         }

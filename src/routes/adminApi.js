@@ -1546,21 +1546,58 @@ router.post(
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+    const cols = await getBackendLicensesColumns();
+    const updates = ["status='REVOKED'"];
+    const values = [id];
+    let idx = 2;
+    const adminId = req.admin?.user_id || null;
+
+    if (cols.has("license_status")) updates.push("license_status='REVOKED'");
+    if (cols.has("revoked_by_admin_id")) {
+      updates.push(`revoked_by_admin_id=$${idx}`);
+      values.push(adminId);
+      idx += 1;
+    }
+    if (cols.has("revoked_at")) updates.push("revoked_at=NOW()");
+    if (cols.has("updated_by_admin_id")) {
+      updates.push(`updated_by_admin_id=$${idx}`);
+      values.push(adminId);
+      idx += 1;
+    }
+    if (cols.has("updated_at")) updates.push("updated_at=NOW()");
+
+    const statusExpr = cols.has("license_status")
+      ? "COALESCE(license_status, status)"
+      : "status";
+
+    console.log("[LICENSE] revoke requested", {
+      id,
+      admin_id: adminId,
+      has_license_status: cols.has("license_status"),
+      has_revoked_by: cols.has("revoked_by_admin_id")
+    });
+
     const result = await pool.query(
       `UPDATE backend_licenses
-       SET status='REVOKED',
-           license_status='REVOKED',
-           revoked_by_admin_id=$2,
-           revoked_at=NOW(),
-           updated_by_admin_id=$2,
-           updated_at=NOW()
+       SET ${updates.join(", ")}
        WHERE id=$1
-       RETURNING id, backend_id, business_id, license_id`,
-      [id, req.admin?.user_id || null]
+         AND UPPER(${statusExpr}) <> 'REVOKED'
+       RETURNING id, backend_id, business_id, license_id, status`,
+      values
     );
     if (!result.rows.length) {
-      return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+      console.warn("[LICENSE] revoke failed rows=0", { id });
+      return res.status(404).json({
+        ok: false,
+        error: "NO_ACTIVE_LICENSE_TO_REVOKE",
+        message: "No active license found to revoke."
+      });
     }
+    console.log("[LICENSE] revoke updated", {
+      id: result.rows[0].id,
+      backend_id: result.rows[0].backend_id,
+      license_id: result.rows[0].license_id
+    });
     await logAudit({
       admin: req.admin,
       action: "LICENSE_REVOKED",

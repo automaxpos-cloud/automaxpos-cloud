@@ -381,17 +381,40 @@ router.get("/licenses/current", authUser, async (req, res) => {
     if (branchId && String(row.branch_id || "") !== String(branchId || "")) {
       return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "Backend not in branch scope" });
     }
+    const cols = await getBackendLicensesColumns();
+    const statusExpr = cols.has("license_status") ? "COALESCE(bl.license_status, bl.status)" : "bl.status";
+    const orderBy = `COALESCE(${selectColExpr(cols, "approved_at")}, ${selectColExpr(cols, "updated_at")}, bl.issued_at) DESC NULLS LAST`;
     const license = await pool.query(
-      `SELECT license_id, plan, device_limit, issued_at, expires_at, status
-       FROM backend_licenses
-       WHERE backend_id = $1
+      `SELECT
+         bl.license_id,
+         bl.plan,
+         bl.device_limit,
+         bl.issued_at,
+         bl.expires_at,
+         ${selectCol(cols, "license_status", "license_status")},
+         bl.status
+       FROM backend_licenses bl
+       WHERE bl.backend_id = $1
+         AND UPPER(${statusExpr}) = 'ACTIVE'
+       ORDER BY ${orderBy}
        LIMIT 1`,
       [backendId]
     );
     if (!license.rows.length) {
       return res.json({ ok: true, license: null });
     }
-    return res.json({ ok: true, license: license.rows[0] });
+    const row = license.rows[0];
+    return res.json({
+      ok: true,
+      license: {
+        license_id: row.license_id,
+        plan: row.plan,
+        device_limit: row.device_limit,
+        issued_at: row.issued_at,
+        expires_at: row.expires_at,
+        status: row.license_status || row.status || null
+      }
+    });
   } catch (err) {
     console.error("DASHBOARD LICENSE CURRENT ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
