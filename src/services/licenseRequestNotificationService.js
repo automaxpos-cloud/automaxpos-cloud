@@ -3,7 +3,7 @@ const { CLOUD_BASE_URL } = require("../config/env");
 const { isEmailConfigured, sendEmail } = require("./emailService");
 const { isSmsEnabled, sendSms } = require("./smsService");
 
-const LICENSE_REVIEW_ROLES = new Set(["SUPER_ADMIN", "SUPERADMIN", "LICENSING_ADMIN"]);
+const LICENSE_REVIEW_ROLES = new Set(["SUPER_ADMIN", "SUPERADMIN", "ADMIN"]);
 
 async function getCloudUsersColumns() {
   const res = await query(
@@ -30,7 +30,7 @@ async function getLicenseReviewRecipients() {
     FROM cloud_users
     WHERE ${activeExpr}
       AND ${revokedExpr}
-      AND UPPER(role) IN ('SUPER_ADMIN','SUPERADMIN','LICENSING_ADMIN')
+      AND UPPER(role) IN ('SUPER_ADMIN','SUPERADMIN','ADMIN')
     `
   );
   return (rows.rows || []).filter((r) => r.email);
