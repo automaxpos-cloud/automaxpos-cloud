@@ -58,19 +58,52 @@ async function createAdminNotification({ title, message, payload }) {
 
 async function logDelivery({ notificationId, channel, recipient, status, errorMessage }) {
   try {
-    await query(
-      `INSERT INTO notification_deliveries (notification_id, channel, recipient, status, error_message, sent_at)
-       VALUES ($1,$2,$3,$4,$5,${status === "SENT" ? "NOW()" : "NULL"})`,
-      [
-        notificationId,
-        channel,
-        recipient,
-        status,
-        errorMessage || null
-      ]
+    const update = await query(
+      `UPDATE notification_deliveries
+       SET status=$4,
+           error_message=$5,
+           sent_at=${status === "SENT" ? "NOW()" : "NULL"}
+       WHERE id = (
+         SELECT id
+         FROM notification_deliveries
+         WHERE notification_id=$1 AND channel=$2 AND recipient=$3 AND status='PENDING'
+         ORDER BY created_at DESC
+         LIMIT 1
+       )
+       RETURNING id`,
+      [notificationId, channel, recipient, status, errorMessage || null]
     );
+    if (!update.rowCount) {
+      await query(
+        `INSERT INTO notification_deliveries (notification_id, channel, recipient, status, error_message, sent_at)
+         VALUES ($1,$2,$3,$4,$5,${status === "SENT" ? "NOW()" : "NULL"})`,
+        [
+          notificationId,
+          channel,
+          recipient,
+          status,
+          errorMessage || null
+        ]
+      );
+    }
   } catch (err) {
     console.warn("[NOTIFY] failed to log delivery:", err?.message || err);
+  }
+}
+
+async function markStalePending() {
+  try {
+    await query(
+      `UPDATE notification_deliveries
+       SET status='FAILED',
+           error_message=COALESCE(error_message,'STALE_PENDING'),
+           sent_at=NOW()
+       WHERE channel='email'
+         AND status='PENDING'
+         AND created_at < NOW() - INTERVAL '10 minutes'`
+    );
+  } catch (err) {
+    console.warn("[NOTIFY] failed to mark stale deliveries:", err?.message || err);
   }
 }
 
@@ -156,6 +189,7 @@ async function sendEmailAlerts({ notificationId, request }) {
   );
 
   if (!emails.length) return;
+  await markStalePending();
   await createDeliveryRows(notificationId, emails);
   if (!isEmailConfigured()) {
     for (const email of emails) {
