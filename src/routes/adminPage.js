@@ -1517,8 +1517,13 @@ let activeRequestId = null;
       const res = await fetch("/api/admin/licenses", { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        byId("manual_status").textContent = "Failed to load.";
-        if (!silent) return setToast("Failed to load licenses.", "var(--bad)");
+        const body = byId("manual_body");
+        const hasExisting = licenseMap.size > 0 || (body && body.children.length > 0);
+        const msg = hasExisting
+          ? "Failed to refresh. Showing last loaded results."
+          : "Failed to load.";
+        byId("manual_status").textContent = msg;
+        if (!silent && !hasExisting) return setToast("Failed to load licenses.", "var(--bad)");
         return;
       }
       const body = byId("manual_body");
