@@ -278,7 +278,7 @@ async function request(req, res) {
     );
 
     try {
-      await notifyLicenseRequestCreated({
+      notifyLicenseRequestCreated({
         request_id: requestId,
         business_name: businessName,
         backend_id: backendId,
@@ -288,6 +288,8 @@ async function request(req, res) {
         request_type: requestType,
         requested_total_device_limit: requestedTotal,
         created_at: requestedAt instanceof Date ? requestedAt.toISOString() : new Date().toISOString()
+      }).catch((err) => {
+        console.warn("LICENSE REQUEST NOTIFY ERROR:", err?.message || err);
       });
     } catch (err) {
       console.warn("LICENSE REQUEST NOTIFY ERROR:", err?.message || err);

@@ -729,7 +729,7 @@ router.post("/licenses/request", authUser, async (req, res) => {
     );
 
     try {
-      await notifyLicenseRequestCreated({
+      notifyLicenseRequestCreated({
         request_id: insert.rows[0]?.request_id || requestId,
         business_name: businessName,
         backend_id: backendId,
@@ -739,6 +739,8 @@ router.post("/licenses/request", authUser, async (req, res) => {
         request_type: requestType,
         requested_total_device_limit: requestedTotal,
         created_at: new Date().toISOString()
+      }).catch((err) => {
+        console.warn("LICENSE REQUEST NOTIFY ERROR:", err?.message || err);
       });
     } catch (err) {
       console.warn("LICENSE REQUEST NOTIFY ERROR:", err?.message || err);
