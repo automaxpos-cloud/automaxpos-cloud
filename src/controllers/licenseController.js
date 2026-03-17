@@ -277,6 +277,7 @@ async function request(req, res) {
       ]
     );
 
+    console.log("[LICENSE_REQUEST] saved", requestId);
     try {
       notifyLicenseRequestCreated({
         request_id: requestId,

@@ -22,7 +22,17 @@ async function start() {
   }
   app.listen(port, host, () => {
     console.log(`AutoMaxPOS Cloud API running on ${host}:${port}`);
-    startPaymentEmailImporter();
+    try {
+      const watcherEnabled = String(process.env.ENABLE_IMAP_WATCHER || "").toLowerCase() === "true";
+      if (watcherEnabled) {
+        console.log("[PAYMENT_IMPORT] IMAP watcher enabled");
+      } else {
+        console.log("[PAYMENT_IMPORT] IMAP watcher skipped");
+      }
+      startPaymentEmailImporter();
+    } catch (err) {
+      console.error("[PAYMENT_IMPORT] startup failed:", err?.message || err);
+    }
   });
 }
 

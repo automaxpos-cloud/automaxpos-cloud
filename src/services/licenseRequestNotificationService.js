@@ -74,6 +74,27 @@ async function logDelivery({ notificationId, channel, recipient, status, errorMe
   }
 }
 
+async function createDeliveryRows(notificationId, recipients) {
+  if (!notificationId) return;
+  if (!recipients.length) return;
+  const values = [];
+  const placeholders = [];
+  let idx = 1;
+  for (const recipient of recipients) {
+    placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, NOW())`);
+    values.push(notificationId, "email", recipient, "PENDING");
+  }
+  try {
+    await query(
+      `INSERT INTO notification_deliveries (notification_id, channel, recipient, status, created_at)
+       VALUES ${placeholders.join(", ")}`,
+      values
+    );
+  } catch (err) {
+    console.warn("[NOTIFY] failed to insert delivery rows:", err?.message || err);
+  }
+}
+
 function summarizeRequest(req) {
   return {
     request_id: req.request_id || null,
@@ -135,6 +156,7 @@ async function sendEmailAlerts({ notificationId, request }) {
   );
 
   if (!emails.length) return;
+  await createDeliveryRows(notificationId, emails);
   if (!isEmailConfigured()) {
     for (const email of emails) {
       await logDelivery({
@@ -152,6 +174,7 @@ async function sendEmailAlerts({ notificationId, request }) {
   const content = buildEmailContent(request, adminLink);
   for (const email of emails) {
     try {
+      console.log("[NOTIFY] email send start", email);
       await sendEmail({
         to: email,
         subject: content.title,
@@ -164,6 +187,7 @@ async function sendEmailAlerts({ notificationId, request }) {
         recipient: email,
         status: "SENT"
       });
+      console.log("[NOTIFY] email sent", email);
     } catch (err) {
       await logDelivery({
         notificationId,
@@ -172,6 +196,7 @@ async function sendEmailAlerts({ notificationId, request }) {
         status: "FAILED",
         errorMessage: err?.message || "EMAIL_SEND_FAILED"
       });
+      console.warn("[NOTIFY] email failed", email, err?.message || err);
     }
   }
 }
@@ -216,6 +241,9 @@ async function notifyLicenseRequestCreated(request) {
   const title = `License request: ${payload.business_name || "Business"}`;
   const message = `Requested plan: ${payload.requested_plan || "-"} | Devices: ${payload.requested_total_device_limit ?? "-"}`;
   const notificationId = await createAdminNotification({ title, message, payload });
+  if (notificationId) {
+    console.log("[NOTIFY] admin notification saved", notificationId);
+  }
 
   await sendEmailAlerts({ notificationId, request: payload });
   await sendSmsAlerts({ notificationId, request: payload });

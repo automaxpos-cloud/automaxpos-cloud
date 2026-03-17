@@ -728,6 +728,7 @@ router.post("/licenses/request", authUser, async (req, res) => {
       ]
     );
 
+    console.log("[LICENSE_REQUEST] saved", insert.rows[0]?.request_id || requestId);
     try {
       notifyLicenseRequestCreated({
         request_id: insert.rows[0]?.request_id || requestId,

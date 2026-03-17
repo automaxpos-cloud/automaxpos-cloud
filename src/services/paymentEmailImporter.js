@@ -104,6 +104,12 @@ async function alreadyProcessed(messageId, txnId) {
 async function pollMailbox() {
   const enabled = String(process.env.PAYMENT_EMAIL_ENABLED || "").toLowerCase() === "true";
   if (!enabled) return;
+  const watcherEnabled = String(process.env.ENABLE_IMAP_WATCHER || "").toLowerCase() === "true";
+  if (!watcherEnabled) {
+    // eslint-disable-next-line no-console
+    console.log("[PAYMENT_IMPORT] IMAP watcher disabled");
+    return;
+  }
 
   const host = process.env.PAYMENT_EMAIL_IMAP_HOST || "imap.gmail.com";
   const port = Number(process.env.PAYMENT_EMAIL_IMAP_PORT || 993);
@@ -122,6 +128,10 @@ async function pollMailbox() {
     port,
     secure: true,
     auth: { user, pass }
+  });
+  client.on("error", (err) => {
+    // eslint-disable-next-line no-console
+    console.error("[PAYMENT_IMPORT] IMAP error", err?.message || err);
   });
 
   try {
@@ -211,6 +221,12 @@ function startPaymentEmailImporter() {
   if (!enabled) {
     // eslint-disable-next-line no-console
     console.log("[PAYMENT_IMPORT] disabled");
+    return;
+  }
+  const watcherEnabled = String(process.env.ENABLE_IMAP_WATCHER || "").toLowerCase() === "true";
+  if (!watcherEnabled) {
+    // eslint-disable-next-line no-console
+    console.log("[PAYMENT_IMPORT] IMAP watcher disabled");
     return;
   }
   const minutes = Number(process.env.PAYMENT_EMAIL_POLL_MINUTES || 3);
