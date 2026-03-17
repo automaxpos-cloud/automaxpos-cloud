@@ -1,6 +1,7 @@
 const express = require("express");
 const { pool } = require("../db/pool");
 const authUser = require("../middleware/authUser");
+const { notifyLicenseRequestCreated } = require("../services/licenseRequestNotificationService");
 
 const router = express.Router();
 
@@ -634,7 +635,7 @@ router.post("/licenses/request", authUser, async (req, res) => {
       return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "backend_id required" });
     }
     const backend = await pool.query(
-      `SELECT id, business_id, branch_id, machine_id
+      `SELECT id, business_id, branch_id, machine_id, backend_name
        FROM backend_devices
        WHERE id = $1`,
       [backendId]
@@ -726,6 +727,22 @@ router.post("/licenses/request", authUser, async (req, res) => {
         notes
       ]
     );
+
+    try {
+      await notifyLicenseRequestCreated({
+        request_id: insert.rows[0]?.request_id || requestId,
+        business_name: businessName,
+        backend_id: backendId,
+        backend_name: row.backend_name || null,
+        machine_id: row.machine_id || null,
+        requested_plan: requestedPlan,
+        request_type: requestType,
+        requested_total_device_limit: requestedTotal,
+        created_at: new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn("LICENSE REQUEST NOTIFY ERROR:", err?.message || err);
+    }
 
     return res.json({ ok: true, request_id: insert.rows[0]?.request_id || requestId });
   } catch (err) {

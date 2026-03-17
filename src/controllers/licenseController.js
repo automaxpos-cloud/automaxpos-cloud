@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const { pool } = require("../db/pool");
 const licenseService = require("../services/licenseService");
+const { notifyLicenseRequestCreated } = require("../services/licenseRequestNotificationService");
 
 function toEpochSeconds(value) {
   if (!value) return null;
@@ -179,7 +180,7 @@ async function request(req, res) {
     let branchId = backend ? backend.branch_id : String(body.branch_id || "").trim();
 
     const backendRow = await pool.query(
-      `SELECT machine_id, installation_id FROM backend_devices WHERE id=$1`,
+      `SELECT machine_id, installation_id, backend_name FROM backend_devices WHERE id=$1`,
       [backendId]
     );
     const machineId = String(body.machine_id || backendRow.rows[0]?.machine_id || "").trim();
@@ -275,6 +276,22 @@ async function request(req, res) {
         payerPhone
       ]
     );
+
+    try {
+      await notifyLicenseRequestCreated({
+        request_id: requestId,
+        business_name: businessName,
+        backend_id: backendId,
+        backend_name: backendRow.rows[0]?.backend_name || null,
+        machine_id: machineId,
+        requested_plan: requestedPlan,
+        request_type: requestType,
+        requested_total_device_limit: requestedTotal,
+        created_at: requestedAt instanceof Date ? requestedAt.toISOString() : new Date().toISOString()
+      });
+    } catch (err) {
+      console.warn("LICENSE REQUEST NOTIFY ERROR:", err?.message || err);
+    }
 
     return res.json({ ok: true, request_id: requestId, status: "PENDING" });
   } catch (err) {
