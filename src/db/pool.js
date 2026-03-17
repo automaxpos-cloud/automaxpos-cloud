@@ -1,7 +1,8 @@
 const dotenv = require("dotenv");
 const { Pool } = require("pg");
 
-dotenv.config({ override: true });
+// Avoid overriding production env vars (Render), but allow local .env in dev
+dotenv.config({ override: process.env.NODE_ENV !== "production" });
 const {
   DATABASE_URL,
   DB_HOST,
@@ -11,18 +12,21 @@ const {
   DB_PASSWORD
 } = require("../config/env");
 
+const hasDbUrl = Boolean(DATABASE_URL);
 const hasExplicitDb =
-  Boolean(DB_NAME) && Boolean(DB_USER);
+  Boolean(DB_NAME) && Boolean(DB_USER) && Boolean(DB_PASSWORD);
 
-const connectionConfig = hasExplicitDb
-  ? {
-      host: DB_HOST,
-      port: Number(DB_PORT || 5432),
-      database: DB_NAME,
-      user: DB_USER,
-      password: DB_PASSWORD
-    }
-  : (DATABASE_URL ? { connectionString: DATABASE_URL } : {});
+const connectionConfig = hasDbUrl
+  ? { connectionString: DATABASE_URL }
+  : (hasExplicitDb
+    ? {
+        host: DB_HOST,
+        port: Number(DB_PORT || 5432),
+        database: DB_NAME,
+        user: DB_USER,
+        password: DB_PASSWORD
+      }
+    : {});
 
 const pool = new Pool({
   ...connectionConfig,
