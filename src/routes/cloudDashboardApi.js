@@ -376,6 +376,11 @@ router.get("/returns-recent", authUser, async (req, res) => {
     const result = await pool.query(
       range
         ? `SELECT r.return_no,
+                COALESCE(
+                  NULLIF(r.raw_payload_json::jsonb->>'sale_receipt_no',''),
+                  NULLIF(r.raw_payload_json::jsonb->>'receipt_no',''),
+                  NULLIF(r.raw_payload_json::jsonb->>'sale_receipt','')
+                ) AS sale_receipt_no,
                 b.name AS business_name,
                 br.name AS branch_name,
                 r.total,
@@ -391,6 +396,11 @@ router.get("/returns-recent", authUser, async (req, res) => {
            ORDER BY COALESCE(r.local_created_at, r.synced_at) DESC
            LIMIT 20`
         : `SELECT r.return_no,
+                COALESCE(
+                  NULLIF(r.raw_payload_json::jsonb->>'sale_receipt_no',''),
+                  NULLIF(r.raw_payload_json::jsonb->>'receipt_no',''),
+                  NULLIF(r.raw_payload_json::jsonb->>'sale_receipt','')
+                ) AS sale_receipt_no,
                 b.name AS business_name,
                 br.name AS branch_name,
                 r.total,

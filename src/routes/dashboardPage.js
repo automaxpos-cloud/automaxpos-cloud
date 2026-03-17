@@ -436,7 +436,7 @@ router.get("/", (req, res) => {
       <table id="returns-table">
         <thead>
           <tr>
-            <th>Return No</th>
+            <th>Receipt</th>
             <th>Business</th>
             <th>Branch</th>
             <th>Total</th>
@@ -1250,7 +1250,7 @@ router.get("/", (req, res) => {
       body.innerHTML = "";
       for (const r of rows) {
         const tr = document.createElement("tr");
-        tr.innerHTML = "<td>" + (r.return_no || "-") + "</td>" +
+        tr.innerHTML = "<td>" + (r.sale_receipt_no || r.return_no || "-") + "</td>" +
           "<td>" + (r.business_name || "-") + "</td>" +
           "<td>" + (r.branch_name || "-") + "</td>" +
           "<td>" + (r.total ?? 0) + "</td>" +
