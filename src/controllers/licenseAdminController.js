@@ -98,7 +98,10 @@ async function issue(req, res) {
       backendId: String(backend_id),
       issueType: "new_license",
       planName: plan,
-      baseDeviceLimit: device_limit
+      baseDeviceLimit: device_limit,
+      issuedBy: req.admin || null,
+      approvedBy: req.admin || null,
+      updatedBy: req.admin || null
     });
     return res.json({ ok: true, license });
   } catch (err) {
