@@ -1033,7 +1033,7 @@ let activeRequestId = null;
       const phone = row.payer_phone || "-";
       const amount = row.amount != null ? "K" + row.amount : "-";
       const txn = row.txn_id || "-";
-      return `${when} | ${txn} | ${phone} | ${amount}`;
+      return when + " | " + txn + " | " + phone + " | " + amount;
     }
 
     function resetPaymentModal(request) {
