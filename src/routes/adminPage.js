@@ -1034,8 +1034,9 @@ let activeRequestId = null;
       const when = row.imported_at ? new Date(row.imported_at).toLocaleString() : "Unknown time";
       const phone = row.payer_phone || "-";
       const amount = row.amount != null ? "K" + row.amount : "-";
+      const status = row.match_status ? String(row.match_status).toUpperCase() : "-";
       const txn = row.txn_id || "-";
-      return when + " | " + txn + " | " + phone + " | " + amount;
+      return when + " | " + txn + " | " + phone + " | " + amount + " | " + status;
     }
 
     function cachePayments(rows) {
@@ -1043,11 +1044,18 @@ let activeRequestId = null;
       paymentsCacheMap = new Map((rows || []).map((r) => [String(r.id), r]));
     }
 
+    function normalizePhone(value) {
+      return String(value || "").replace(/\D/g, "");
+    }
+
     function filterPaymentsForRequest(rows, request) {
       if (!rows || !rows.length) return [];
-      const phone = String(request?.phone || "").trim();
-      if (!phone) return rows;
-      return rows.filter((r) => String(r.payer_phone || "").trim() === phone);
+      let filtered = rows.filter((r) => String(r.match_status || "").toLowerCase() !== "matched");
+      const phone = normalizePhone(request?.phone);
+      if (!phone) return filtered;
+      const matches = filtered.filter((r) => normalizePhone(r.payer_phone).includes(phone));
+      if (matches.length) return matches;
+      return filtered;
     }
 
     function populatePaymentSelect(rows, note) {
@@ -1097,6 +1105,11 @@ let activeRequestId = null;
     async function refreshPaymentOptions(request) {
       const help = byId("pay_select_help");
       if (!help) return;
+      const token = localStorage.getItem(tokenKey);
+      if (!token) {
+        help.textContent = "Session expired. Please login again.";
+        return;
+      }
       const params = new URLSearchParams();
       params.set("status", "unmatched");
       params.set("range", "last7");
@@ -1111,7 +1124,9 @@ let activeRequestId = null;
       const rows = filterPaymentsForRequest(data.rows || [], request);
       populatePaymentSelect(
         rows,
-        rows.length ? "Showing unmatched payments from the last 7 days." : "No unmatched payments found."
+        rows.length
+          ? "Showing unmatched payments from the last 7 days."
+          : "No unmatched payments found. Try refreshing the Payments list."
       );
     }
 
