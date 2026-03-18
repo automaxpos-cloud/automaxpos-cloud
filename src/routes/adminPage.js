@@ -1009,6 +1009,8 @@ let activeRequestId = null;
     let backendMap = new Map();
     let paymentOptions = [];
     let paymentOptionsMap = new Map();
+    let paymentsCache = [];
+    let paymentsCacheMap = new Map();
     let manualContext = { source: null, requestId: null, licenseId: null };
     let manualRequestSnapshot = null;
     let manualFallbackLicense = null;
@@ -1036,6 +1038,34 @@ let activeRequestId = null;
       return when + " | " + txn + " | " + phone + " | " + amount;
     }
 
+    function cachePayments(rows) {
+      paymentsCache = rows || [];
+      paymentsCacheMap = new Map((rows || []).map((r) => [String(r.id), r]));
+    }
+
+    function filterPaymentsForRequest(rows, request) {
+      if (!rows || !rows.length) return [];
+      const phone = String(request?.phone || "").trim();
+      if (!phone) return rows;
+      return rows.filter((r) => String(r.payer_phone || "").trim() === phone);
+    }
+
+    function populatePaymentSelect(rows, note) {
+      const help = byId("pay_select_help");
+      const select = byId("pay_select");
+      if (!help || !select) return;
+      paymentOptions = rows || [];
+      paymentOptionsMap = new Map((rows || []).map((r) => [String(r.id), r]));
+      select.innerHTML = "<option value=''>Select a payment...</option>";
+      (rows || []).forEach((row) => {
+        const opt = document.createElement("option");
+        opt.value = String(row.id);
+        opt.textContent = formatPaymentOption(row);
+        select.appendChild(opt);
+      });
+      help.textContent = note || (rows.length ? "Payments loaded." : "No payments found.");
+    }
+
     function resetPaymentModal(request) {
       const amount = request?.amount_expected ?? "";
       if (byId("pay_amount")) byId("pay_amount").value = amount;
@@ -1053,10 +1083,20 @@ let activeRequestId = null;
     }
 
     async function loadPaymentOptionsForRequest(request) {
+      const cachedRows = filterPaymentsForRequest(paymentsCache, request);
+      if (cachedRows.length) {
+        populatePaymentSelect(cachedRows, "Loaded from Payments list. Click Refresh to re-sync.");
+        return;
+      }
       const help = byId("pay_select_help");
-      const select = byId("pay_select");
-      if (!help || !select) return;
+      if (!help) return;
       help.textContent = "Loading recent unmatched payments...";
+      await refreshPaymentOptions(request);
+    }
+
+    async function refreshPaymentOptions(request) {
+      const help = byId("pay_select_help");
+      if (!help) return;
       const params = new URLSearchParams();
       params.set("status", "unmatched");
       params.set("range", "last7");
@@ -1068,19 +1108,11 @@ let activeRequestId = null;
         help.textContent = data?.message || data?.error || "Failed to load payments.";
         return;
       }
-      const rows = data.rows || [];
-      paymentOptions = rows;
-      paymentOptionsMap = new Map(rows.map((r) => [String(r.id), r]));
-      select.innerHTML = "<option value=''>Select a payment...</option>";
-      rows.forEach((row) => {
-        const opt = document.createElement("option");
-        opt.value = String(row.id);
-        opt.textContent = formatPaymentOption(row);
-        select.appendChild(opt);
-      });
-      help.textContent = rows.length
-        ? "Showing unmatched payments from the last 7 days."
-        : "No unmatched payments found.";
+      const rows = filterPaymentsForRequest(data.rows || [], request);
+      populatePaymentSelect(
+        rows,
+        rows.length ? "Showing unmatched payments from the last 7 days." : "No unmatched payments found."
+      );
     }
 
     function applySelectedPayment(paymentRow) {
@@ -1745,6 +1777,7 @@ let activeRequestId = null;
       const body = byId("payments_body");
       body.innerHTML = "";
       const rows = data.rows || [];
+      cachePayments(rows);
       byId("payments_status").textContent = rows.length + " rows";
       byId("payments_empty").classList.toggle("hidden", rows.length > 0);
       rows.forEach((r) => {
@@ -2675,7 +2708,7 @@ let activeRequestId = null;
       });
       byId("pay_refresh")?.addEventListener("click", async () => {
         const r = requestMap.get(String(activeRequestId));
-        await loadPaymentOptionsForRequest(r);
+        await refreshPaymentOptions(r);
       });
       byId("pay_cancel").addEventListener("click", () => {
         closeModal("payment_modal");
