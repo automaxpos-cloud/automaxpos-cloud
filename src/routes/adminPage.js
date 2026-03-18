@@ -1299,6 +1299,7 @@ let activeRequestId = null;
           "<td>" +
           "<button class='btn' data-action='load' data-id='" + r.id + "'>Load</button> " +
           "<button class='btn' data-action='view' data-id='" + r.id + "'>View</button> " +
+          (paid ? "" : "<button class='btn' data-action='pay' data-id='" + r.id + "'>Mark Paid</button> ") +
           "<button class='btn' data-action='approve' data-id='" + r.id + "'" + (paid ? "" : " disabled") + ">Approve</button> " +
           "<button class='btn' data-action='reject' data-id='" + r.id + "'>Reject</button>" +
           "</td>";
