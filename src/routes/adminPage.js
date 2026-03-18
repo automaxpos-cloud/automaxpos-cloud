@@ -883,6 +883,16 @@ router.get(
   <div class="modal" id="payment_modal">
     <div class="panel">
       <h3>Confirm Payment</h3>
+      <div style="margin-top:6px;">
+        <label class="muted">Select Payment</label>
+        <div class="row">
+          <select id="pay_select" style="width:100%;">
+            <option value="">Select a payment...</option>
+          </select>
+          <button class="btn" id="pay_refresh" type="button">Refresh</button>
+        </div>
+        <div class="muted" id="pay_select_help" style="margin-top:4px;font-size:12px;"></div>
+      </div>
       <div class="row">
         <div>
           <label class="muted">Method</label>
@@ -997,6 +1007,8 @@ let activeRequestId = null;
     let requestMap = new Map();
     let licenseMap = new Map();
     let backendMap = new Map();
+    let paymentOptions = [];
+    let paymentOptionsMap = new Map();
     let manualContext = { source: null, requestId: null, licenseId: null };
     let manualRequestSnapshot = null;
     let manualFallbackLicense = null;
@@ -1014,6 +1026,71 @@ let activeRequestId = null;
     function authHeaders() {
       const token = localStorage.getItem(tokenKey) || "";
       return { Authorization: "Bearer " + token };
+    }
+
+    function formatPaymentOption(row) {
+      const when = row.imported_at ? new Date(row.imported_at).toLocaleString() : "Unknown time";
+      const phone = row.payer_phone || "-";
+      const amount = row.amount != null ? "K" + row.amount : "-";
+      const txn = row.txn_id || "-";
+      return `${when} | ${txn} | ${phone} | ${amount}`;
+    }
+
+    function resetPaymentModal(request) {
+      const amount = request?.amount_expected ?? "";
+      if (byId("pay_amount")) byId("pay_amount").value = amount;
+      if (byId("pay_txn")) byId("pay_txn").value = "";
+      if (byId("pay_notes")) byId("pay_notes").value = "";
+      if (byId("pay_method")) byId("pay_method").value = "Mobile Money";
+      if (byId("pay_select")) {
+        byId("pay_select").innerHTML = "<option value=''>Select a payment...</option>";
+      }
+      if (byId("pay_select_help")) {
+        byId("pay_select_help").textContent = "";
+      }
+      paymentOptions = [];
+      paymentOptionsMap = new Map();
+    }
+
+    async function loadPaymentOptionsForRequest(request) {
+      const help = byId("pay_select_help");
+      const select = byId("pay_select");
+      if (!help || !select) return;
+      help.textContent = "Loading recent unmatched payments...";
+      const params = new URLSearchParams();
+      params.set("status", "unmatched");
+      params.set("range", "last7");
+      const phone = String(request?.phone || "").trim();
+      if (phone) params.set("q", phone);
+      const res = await fetch("/api/admin/payments?" + params.toString(), { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        help.textContent = data?.message || data?.error || "Failed to load payments.";
+        return;
+      }
+      const rows = data.rows || [];
+      paymentOptions = rows;
+      paymentOptionsMap = new Map(rows.map((r) => [String(r.id), r]));
+      select.innerHTML = "<option value=''>Select a payment...</option>";
+      rows.forEach((row) => {
+        const opt = document.createElement("option");
+        opt.value = String(row.id);
+        opt.textContent = formatPaymentOption(row);
+        select.appendChild(opt);
+      });
+      help.textContent = rows.length
+        ? "Showing unmatched payments from the last 7 days."
+        : "No unmatched payments found.";
+    }
+
+    function applySelectedPayment(paymentRow) {
+      if (!paymentRow) return;
+      if (byId("pay_amount")) byId("pay_amount").value = paymentRow.amount ?? "";
+      if (byId("pay_txn")) byId("pay_txn").value = paymentRow.txn_id || "";
+      if (byId("pay_notes")) {
+        const note = paymentRow.txn_id ? ("Auto-selected payment " + paymentRow.txn_id) : "Auto-selected payment";
+        byId("pay_notes").value = note;
+      }
     }
 
     function setActiveNav() {
@@ -2295,7 +2372,10 @@ let activeRequestId = null;
         const id = btn.dataset.id;
         if (btn.dataset.action === "pay") {
           activeRequestId = id;
+          const r = requestMap.get(String(id));
+          resetPaymentModal(r);
           openModal("payment_modal");
+          await loadPaymentOptionsForRequest(r);
         }
         if (btn.dataset.action === "issue") {
           const resp = await fetch("/api/admin/license-requests/" + id + "/mark-issued", {
@@ -2588,6 +2668,15 @@ let activeRequestId = null;
     }
 
     function bindPaymentModal() {
+      byId("pay_select")?.addEventListener("change", () => {
+        const id = byId("pay_select")?.value || "";
+        const row = paymentOptionsMap.get(String(id));
+        applySelectedPayment(row);
+      });
+      byId("pay_refresh")?.addEventListener("click", async () => {
+        const r = requestMap.get(String(activeRequestId));
+        await loadPaymentOptionsForRequest(r);
+      });
       byId("pay_cancel").addEventListener("click", () => {
         closeModal("payment_modal");
       });
