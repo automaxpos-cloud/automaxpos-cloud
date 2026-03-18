@@ -771,6 +771,7 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.business_id,
         lr.branch_id,
         lr.requested_at,
+        lr.created_at,
         lr.status,
         lr.payment_status,
         lr.payment_reference,
@@ -810,7 +811,7 @@ router.get("/license-requests", adminJwt, async (req, res) => {
         lr.email ILIKE '%' || $1 || '%' OR
         lr.machine_id ILIKE '%' || $1 || '%'
       )
-      ORDER BY lr.created_at DESC
+      ORDER BY COALESCE(lr.requested_at, lr.created_at) DESC
       LIMIT 500
       `,
       [q]

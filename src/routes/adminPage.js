@@ -393,6 +393,7 @@ router.get(
               <th>Amount</th>
               <th>Status</th>
               <th>Payment Status</th>
+              <th>Requested At</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -1264,6 +1265,7 @@ let activeRequestId = null;
           r.device_limit ??
           r.extra_device_count ??
           "-";
+        const requestedAt = r.requested_at || r.created_at || null;
         const tr = document.createElement("tr");
         const detailId = "req_detail_" + r.id;
         const detailHtml =
@@ -1276,7 +1278,7 @@ let activeRequestId = null;
           "<div><span class='muted'>Machine ID:</span> " + (r.machine_id || "-") + "</div>" +
           "<div><span class='muted'>Device ID:</span> " + (r.device_id || "-") + "</div>" +
           "<div><span class='muted'>Backend ID:</span> " + (r.backend_id || "-") + "</div>" +
-          "<div><span class='muted'>Requested At:</span> " + (r.requested_at ? new Date(r.requested_at).toLocaleString() : "-") + "</div>" +
+          "<div><span class='muted'>Requested At:</span> " + (requestedAt ? new Date(requestedAt).toLocaleString() : "-") + "</div>" +
           "<div><span class='muted'>Payment Ref:</span> " + (r.payment_reference || "-") + "</div>" +
           "<div><span class='muted'>Paid Amount:</span> " + (r.paid_amount != null ? "K" + r.paid_amount : "-") + "</div>" +
           "<div class='span-2'><span class='muted'>Notes:</span> " + (r.notes || "-") + "</div>" +
@@ -1293,6 +1295,7 @@ let activeRequestId = null;
           "<td>" + (r.amount_expected != null ? "K" + r.amount_expected : "-") + "</td>" +
           "<td>" + statusBadge(r.status || r.request_status) + "</td>" +
           "<td>" + paymentStatusBadge(r.payment_status) + "</td>" +
+          "<td>" + (requestedAt ? new Date(requestedAt).toLocaleString() : "-") + "</td>" +
           "<td>" +
           "<button class='btn' data-action='load' data-id='" + r.id + "'>Load</button> " +
           "<button class='btn' data-action='view' data-id='" + r.id + "'>View</button> " +
@@ -1303,7 +1306,7 @@ let activeRequestId = null;
         const detailRow = document.createElement("tr");
         detailRow.className = "req-detail-row hidden";
         detailRow.id = detailId;
-        detailRow.innerHTML = "<td colspan='10'>" + detailHtml + "</td>";
+        detailRow.innerHTML = "<td colspan='11'>" + detailHtml + "</td>";
         body.appendChild(tr);
         body.appendChild(detailRow);
         body.appendChild(tr);
