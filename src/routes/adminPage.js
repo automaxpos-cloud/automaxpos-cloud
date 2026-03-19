@@ -1113,18 +1113,18 @@ let activeRequestId = null;
       const params = new URLSearchParams();
       params.set("status", "unmatched");
       params.set("range", "last7");
-      const phone = String(request?.phone || "").trim();
-      if (phone) params.set("q", phone);
       const res = await fetch("/api/admin/payments?" + params.toString(), { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         help.textContent = data?.message || data?.error || "Failed to load payments.";
         return;
       }
-      const rows = filterPaymentsForRequest(data.rows || [], request);
+      const rows = data.rows || [];
+      cachePayments(rows);
+      const filtered = filterPaymentsForRequest(rows, request);
       populatePaymentSelect(
-        rows,
-        rows.length
+        filtered,
+        filtered.length
           ? "Showing unmatched payments from the last 7 days."
           : "No unmatched payments found. Try refreshing the Payments list."
       );

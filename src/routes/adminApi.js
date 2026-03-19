@@ -1379,7 +1379,7 @@ router.get("/payments", adminJwt, async (req, res) => {
         imported_at,
         processed_at
       FROM payment_transactions
-      WHERE ($1 = '' OR match_status = $1)
+      WHERE ($1 = '' OR LOWER(match_status) = LOWER($1))
         AND ($2 = '' OR txn_id ILIKE '%' || $2 || '%' OR payer_phone ILIKE '%' || $2 || '%')
         AND ($3::timestamptz IS NULL OR imported_at >= $3::timestamptz)
         AND ($4::timestamptz IS NULL OR imported_at < $4::timestamptz)
