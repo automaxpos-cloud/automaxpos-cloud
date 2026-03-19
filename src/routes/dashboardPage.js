@@ -1936,10 +1936,17 @@ function showSection(name) {
 
     async function saveBranch() {
       const msg = byId("branch_status_msg");
+      const role = String(state.user?.role || "");
+      const isSuper = role === "SUPERADMIN" || role === "SUPER_ADMIN";
+      const selectedBusiness = byId("filter_business")?.value || "";
       const id = byId("branch_edit_id")?.value || "";
       const name = byId("branch_name")?.value.trim() || "";
       if (!name) {
         if (msg) msg.textContent = "Branch name is required.";
+        return;
+      }
+      if (isSuper && !selectedBusiness) {
+        if (msg) msg.textContent = "Select a business first.";
         return;
       }
       const payload = {
@@ -1952,6 +1959,7 @@ function showSection(name) {
         manager_name: byId("branch_manager")?.value.trim() || null,
         status: byId("branch_status")?.value || "ACTIVE"
       };
+      if (isSuper) payload.business_id = selectedBusiness;
       const url = id ? ("/api/dashboard/branches/" + encodeURIComponent(id)) : "/api/dashboard/branches";
       const method = id ? "PUT" : "POST";
       if (msg) msg.textContent = "Saving...";
