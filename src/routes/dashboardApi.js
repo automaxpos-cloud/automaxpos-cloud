@@ -785,7 +785,8 @@ router.get("/branches", authUser, async (req, res) => {
     if (role === "BRANCH_MANAGER") {
       const branchId = req.user?.branch_id || null;
       const result = await pool.query(
-        `SELECT id, name, business_id FROM branches
+        `SELECT id, business_id, name, code, phone, email, address, city, manager_name, status, created_at, updated_at
+         FROM branches
          WHERE id = $1
          ORDER BY name ASC`,
         [branchId]
@@ -793,14 +794,162 @@ router.get("/branches", authUser, async (req, res) => {
       return res.json({ rows: result.rows || [] });
     }
     const result = await pool.query(
-      `SELECT id, name, business_id FROM branches
-       WHERE ($1::uuid IS NULL OR business_id = $1)
-       ORDER BY name ASC`,
+      `SELECT
+         br.id,
+         br.business_id,
+         br.name,
+         br.code,
+         br.phone,
+         br.email,
+         br.address,
+         br.city,
+         br.manager_name,
+         br.status,
+         br.created_at,
+         br.updated_at,
+         COALESCE(bd.backend_count, 0) AS backend_count,
+         bd.backend_id,
+         bd.backend_name,
+         bd.last_seen_at
+       FROM branches br
+       LEFT JOIN LATERAL (
+         SELECT
+           COUNT(*) AS backend_count,
+           (ARRAY_AGG(bd.id ORDER BY bd.last_seen_at DESC NULLS LAST))[1] AS backend_id,
+           (ARRAY_AGG(bd.backend_name ORDER BY bd.last_seen_at DESC NULLS LAST))[1] AS backend_name,
+           MAX(bd.last_seen_at) AS last_seen_at
+         FROM backend_devices bd
+         WHERE bd.branch_id = br.id
+       ) bd ON TRUE
+       WHERE ($1::uuid IS NULL OR br.business_id = $1)
+       ORDER BY br.name ASC`,
       [businessId]
     );
     return res.json({ rows: result.rows || [] });
   } catch (err) {
     console.error("DASHBOARD BRANCH LIST ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+function normalizeBranchStatus(value) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (raw === "INACTIVE" || raw === "DISABLED") return "INACTIVE";
+  return "ACTIVE";
+}
+
+router.post("/branches", authUser, async (req, res) => {
+  try {
+    const role = String(req.user?.role || "").toUpperCase();
+    const isSuper = role === "SUPERADMIN" || role === "SUPER_ADMIN";
+    const businessId = isSuper
+      ? (req.body?.business_id || req.user?.business_id || null)
+      : (req.user?.business_id || null);
+    if (!businessId) return res.status(403).json({ ok: false, error: "FORBIDDEN", message: "business_id required" });
+
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "Branch name required" });
+
+    const code = String(req.body?.code || "").trim() || null;
+    const phone = String(req.body?.phone || "").trim() || null;
+    const email = String(req.body?.email || "").trim() || null;
+    const address = String(req.body?.address || "").trim() || null;
+    const city = String(req.body?.city || "").trim() || null;
+    const manager_name = String(req.body?.manager_name || "").trim() || null;
+    const status = normalizeBranchStatus(req.body?.status);
+    const location = address || city || null;
+
+    const result = await pool.query(
+      `INSERT INTO branches
+        (business_id, name, code, phone, email, address, city, manager_name, status, location, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+       RETURNING id, business_id, name, code, phone, email, address, city, manager_name, status, created_at, updated_at`,
+      [businessId, name, code, phone, email, address, city, manager_name, status, location]
+    );
+    return res.json({ ok: true, branch: result.rows[0] });
+  } catch (err) {
+    console.error("DASHBOARD BRANCH CREATE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.put("/branches/:branchId", authUser, async (req, res) => {
+  try {
+    const role = String(req.user?.role || "").toUpperCase();
+    const isSuper = role === "SUPERADMIN" || role === "SUPER_ADMIN";
+    const branchId = String(req.params.branchId || "").trim();
+    if (!branchId) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "Branch name required" });
+
+    const code = String(req.body?.code || "").trim() || null;
+    const phone = String(req.body?.phone || "").trim() || null;
+    const email = String(req.body?.email || "").trim() || null;
+    const address = String(req.body?.address || "").trim() || null;
+    const city = String(req.body?.city || "").trim() || null;
+    const manager_name = String(req.body?.manager_name || "").trim() || null;
+    const status = normalizeBranchStatus(req.body?.status);
+    const location = address || city || null;
+
+    const scopeBusinessId = isSuper ? null : String(req.user?.business_id || "");
+    const scopeBranchId = role === "BRANCH_MANAGER" ? String(req.user?.branch_id || "") : null;
+
+    const result = await pool.query(
+      `UPDATE branches
+       SET name=$2,
+           code=$3,
+           phone=$4,
+           email=$5,
+           address=$6,
+           city=$7,
+           manager_name=$8,
+           status=$9,
+           location=$10,
+           updated_at=NOW()
+       WHERE id=$1
+         AND ($11::uuid IS NULL OR business_id=$11)
+         AND ($12::uuid IS NULL OR id=$12)
+       RETURNING id, business_id, name, code, phone, email, address, city, manager_name, status, created_at, updated_at`,
+      [branchId, name, code, phone, email, address, city, manager_name, status, location, scopeBusinessId || null, scopeBranchId || null]
+    );
+    if (!result.rowCount) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Branch not found" });
+    }
+    return res.json({ ok: true, branch: result.rows[0] });
+  } catch (err) {
+    console.error("DASHBOARD BRANCH UPDATE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+});
+
+router.patch("/branches/:branchId/status", authUser, async (req, res) => {
+  try {
+    const role = String(req.user?.role || "").toUpperCase();
+    const isSuper = role === "SUPERADMIN" || role === "SUPER_ADMIN";
+    const branchId = String(req.params.branchId || "").trim();
+    if (!branchId) return res.status(400).json({ ok: false, error: "BAD_REQUEST" });
+    const status = normalizeBranchStatus(req.body?.status);
+
+    const scopeBusinessId = isSuper ? null : String(req.user?.business_id || "");
+    const scopeBranchId = role === "BRANCH_MANAGER" ? String(req.user?.branch_id || "") : null;
+
+    const result = await pool.query(
+      `UPDATE branches
+       SET status=$2,
+           updated_at=NOW()
+       WHERE id=$1
+         AND ($3::uuid IS NULL OR business_id=$3)
+         AND ($4::uuid IS NULL OR id=$4)
+       RETURNING id, business_id, name, status, updated_at`,
+      [branchId, status, scopeBusinessId || null, scopeBranchId || null]
+    );
+    if (!result.rowCount) {
+      return res.status(404).json({ ok: false, error: "NOT_FOUND", message: "Branch not found" });
+    }
+    return res.json({ ok: true, branch: result.rows[0] });
+  } catch (err) {
+    console.error("DASHBOARD BRANCH STATUS ERROR:", err);
     return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
   }
 });

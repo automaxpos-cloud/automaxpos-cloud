@@ -181,6 +181,8 @@ router.get("/", (req, res) => {
     .online { background: rgba(37,192,109,0.15); color: var(--good); }
     .idle { background: rgba(250,204,21,0.15); color: var(--warn); }
     .offline { background: rgba(239,68,68,0.15); color: var(--bad); }
+    .badge-good { background: rgba(37,192,109,0.15); color: var(--good); }
+    .badge-warning { background: rgba(250,204,21,0.15); color: var(--warn); }
     .empty {
       padding: 16px;
       color: var(--muted);
@@ -244,6 +246,7 @@ router.get("/", (req, res) => {
       <button class="btn nav-btn" id="nav-dashboard" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Dashboard</button>
       <button class="btn nav-btn" id="nav-monitoring" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Live Monitoring</button>
       <button class="btn nav-btn" id="nav-users" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Users</button>
+      <button class="btn nav-btn" id="nav-branches" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Branches</button>
       <button class="btn nav-btn" id="nav-licenses" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Licensing</button>
       <button class="btn nav-btn" id="export_pdf_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Export PDF</button>
       <button class="btn nav-btn" id="export_xlsx_btn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Export Excel</button>
@@ -579,6 +582,74 @@ router.get("/", (req, res) => {
             </tr>
           </thead>
           <tbody id="users-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="branches-section" style="display:none;">
+      <div class="section" style="margin-top:0;">
+        <h2>Branches</h2>
+        <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+          <input type="hidden" id="branch_edit_id" />
+          <div style="min-width:200px;">
+            <label class="muted">Branch Name</label>
+            <input id="branch_name" type="text" placeholder="Head Office" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div style="min-width:160px;">
+            <label class="muted">Branch Code</label>
+            <input id="branch_code" type="text" placeholder="BR-01" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div style="min-width:180px;">
+            <label class="muted">Phone</label>
+            <input id="branch_phone" type="text" placeholder="+260..." style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div style="min-width:200px;">
+            <label class="muted">Email</label>
+            <input id="branch_email" type="email" placeholder="branch@email.com" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div style="min-width:220px;">
+            <label class="muted">Address</label>
+            <input id="branch_address" type="text" placeholder="Address" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div style="min-width:180px;">
+            <label class="muted">City / Town</label>
+            <input id="branch_city" type="text" placeholder="City" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div style="min-width:180px;">
+            <label class="muted">Manager Name</label>
+            <input id="branch_manager" type="text" placeholder="Manager" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+          </div>
+          <div style="min-width:140px;">
+            <label class="muted">Status</label>
+            <select id="branch_status" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);">
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+          </div>
+          <button class="btn" id="branch_save_btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--accent);color:#fff;">Add Branch</button>
+          <button class="btn" id="branch_cancel_btn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:#1f2a40;color:#fff;">Cancel</button>
+          <div id="branch_status_msg" class="muted"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Branch List</h2>
+        <div id="branches-empty" class="empty" style="display:none;">No branches yet.</div>
+        <table id="branches-table">
+          <thead>
+            <tr>
+              <th>Branch</th>
+              <th>Code</th>
+              <th>Phone</th>
+              <th>Address</th>
+              <th>Status</th>
+              <th>Backends</th>
+              <th>Last Seen</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="branches-body"></tbody>
         </table>
       </div>
     </section>
@@ -1651,7 +1722,7 @@ router.get("/", (req, res) => {
     }
 
 function setActiveNav(id) {
-  const ids = ["nav-dashboard", "nav-monitoring", "nav-users", "nav-licenses"];
+  const ids = ["nav-dashboard", "nav-monitoring", "nav-users", "nav-branches", "nav-licenses"];
   ids.forEach((k) => {
     const btn = byId(k);
     if (btn) btn.classList.remove("active");
@@ -1668,10 +1739,12 @@ function showSection(name) {
       const dash = byId("dashboard-section");
       const monitoring = byId("monitoring-section");
       const users = byId("users-section");
+      const branches = byId("branches-section");
       const licenses = byId("licenses-section");
       if (dash) dash.style.display = name === "dashboard" ? "block" : "none";
       if (monitoring) monitoring.style.display = name === "monitoring" ? "block" : "none";
       if (users) users.style.display = name === "users" ? "block" : "none";
+      if (branches) branches.style.display = name === "branches" ? "block" : "none";
       if (licenses) licenses.style.display = name === "licenses" ? "block" : "none";
     }
 
@@ -1679,14 +1752,17 @@ function showSection(name) {
       const user = state.user || {};
       const role = String(user.role || "");
       const navUsers = byId("nav-users");
+      const navBranches = byId("nav-branches");
       const navLicenses = byId("nav-licenses");
       const isSuper = role === "SUPERADMIN" || role === "SUPER_ADMIN";
       if (role && !isSuper) {
         if (navUsers) navUsers.style.display = "none";
         if (navLicenses) navLicenses.style.display = "none";
+        if (navBranches) navBranches.style.display = "inline-block";
       } else {
         if (navUsers) navUsers.style.display = "inline-block";
         if (navLicenses) navLicenses.style.display = "inline-block";
+        if (navBranches) navBranches.style.display = "inline-block";
       }
 
       const biz = byId("filter_business");
@@ -1778,6 +1854,150 @@ function showSection(name) {
           "<button data-action=\\\"toggle\\\" data-id=\\\"" + r.id + "\\\" data-active=\\\"" + r.is_active + "\\\">" + (r.is_active ? "Disable" : "Enable") + "</button>" +
           "</td>";
         body.appendChild(tr);
+      }
+    }
+
+    function resetBranchForm() {
+      setInput("branch_edit_id", "");
+      setInput("branch_name", "");
+      setInput("branch_code", "");
+      setInput("branch_phone", "");
+      setInput("branch_email", "");
+      setInput("branch_address", "");
+      setInput("branch_city", "");
+      setInput("branch_manager", "");
+      const status = byId("branch_status");
+      if (status) status.value = "ACTIVE";
+      const btn = byId("branch_save_btn");
+      if (btn) btn.textContent = "Add Branch";
+      const msg = byId("branch_status_msg");
+      if (msg) msg.textContent = "";
+    }
+
+    function fillBranchForm(branch) {
+      if (!branch) return;
+      setInput("branch_edit_id", branch.id || "");
+      setInput("branch_name", branch.name || "");
+      setInput("branch_code", branch.code || "");
+      setInput("branch_phone", branch.phone || "");
+      setInput("branch_email", branch.email || "");
+      setInput("branch_address", branch.address || "");
+      setInput("branch_city", branch.city || "");
+      setInput("branch_manager", branch.manager_name || "");
+      const status = byId("branch_status");
+      if (status) status.value = (branch.status || "ACTIVE").toUpperCase();
+      const btn = byId("branch_save_btn");
+      if (btn) btn.textContent = "Update Branch";
+    }
+
+    async function loadBranches() {
+      const msg = byId("branch_status_msg");
+      if (msg) msg.textContent = "Loading...";
+      const bizId = byId("filter_business")?.value || "";
+      const url = "/api/dashboard/branches" + (bizId ? "?business_id=" + encodeURIComponent(bizId) : "");
+      const res = await fetch(url, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (msg) msg.textContent = data?.message || data?.error || "Failed to load branches.";
+        return;
+      }
+      const rows = data.rows || [];
+      const body = byId("branches-body");
+      body.innerHTML = "";
+      byId("branches-empty").style.display = rows.length ? "none" : "block";
+      rows.forEach((r) => {
+        const tr = document.createElement("tr");
+        const backendCount = r.backend_count != null ? String(r.backend_count) : "0";
+        const lastSeen = r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : "-";
+        const created = r.created_at ? new Date(r.created_at).toLocaleString() : "-";
+        const statusBadge = (String(r.status || "ACTIVE").toUpperCase() === "INACTIVE")
+          ? "<span class='status badge-warning'>INACTIVE</span>"
+          : "<span class='status badge-good'>ACTIVE</span>";
+        tr.innerHTML =
+          "<td>" + (r.name || "-") + "</td>" +
+          "<td>" + (r.code || "-") + "</td>" +
+          "<td>" + (r.phone || "-") + "</td>" +
+          "<td>" + ([r.address, r.city].filter(Boolean).join(", ") || "-") + "</td>" +
+          "<td>" + statusBadge + "</td>" +
+          "<td>" + backendCount + "</td>" +
+          "<td>" + lastSeen + "</td>" +
+          "<td>" + created + "</td>" +
+          "<td>" +
+          "<button class='btn' data-action='edit' data-id='" + r.id + "'>Edit</button> " +
+          "<button class='btn' data-action='toggle' data-id='" + r.id + "' data-status='" + (r.status || "ACTIVE") + "'>" +
+          (String(r.status || "ACTIVE").toUpperCase() === "INACTIVE" ? "Activate" : "Deactivate") +
+          "</button>" +
+          "</td>";
+        tr.dataset.branch = JSON.stringify(r);
+        body.appendChild(tr);
+      });
+      if (msg) msg.textContent = rows.length + " branches";
+    }
+
+    async function saveBranch() {
+      const msg = byId("branch_status_msg");
+      const id = byId("branch_edit_id")?.value || "";
+      const name = byId("branch_name")?.value.trim() || "";
+      if (!name) {
+        if (msg) msg.textContent = "Branch name is required.";
+        return;
+      }
+      const payload = {
+        name: name,
+        code: byId("branch_code")?.value.trim() || null,
+        phone: byId("branch_phone")?.value.trim() || null,
+        email: byId("branch_email")?.value.trim() || null,
+        address: byId("branch_address")?.value.trim() || null,
+        city: byId("branch_city")?.value.trim() || null,
+        manager_name: byId("branch_manager")?.value.trim() || null,
+        status: byId("branch_status")?.value || "ACTIVE"
+      };
+      const url = id ? ("/api/dashboard/branches/" + encodeURIComponent(id)) : "/api/dashboard/branches";
+      const method = id ? "PUT" : "POST";
+      if (msg) msg.textContent = "Saving...";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (msg) msg.textContent = data?.message || data?.error || "Failed to save branch.";
+        return;
+      }
+      if (msg) msg.textContent = "Saved.";
+      resetBranchForm();
+      await loadBranches();
+      await loadBranchOptions();
+    }
+
+    async function toggleBranchStatus(id, status) {
+      const next = String(status || "ACTIVE").toUpperCase() === "INACTIVE" ? "ACTIVE" : "INACTIVE";
+      const res = await fetch("/api/dashboard/branches/" + encodeURIComponent(id) + "/status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ status: next })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast(data?.message || data?.error || "Failed to update branch.", "var(--bad)");
+        return;
+      }
+      await loadBranches();
+      await loadBranchOptions();
+    }
+
+    async function handleBranchesTableClick(e) {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const row = btn.closest("tr");
+      if (!row) return;
+      const data = row.dataset.branch ? JSON.parse(row.dataset.branch) : null;
+      if (!data) return;
+      if (btn.dataset.action === "edit") {
+        fillBranchForm(data);
+      } else if (btn.dataset.action === "toggle") {
+        await toggleBranchStatus(data.id, data.status);
       }
     }
 
@@ -2553,6 +2773,10 @@ function showSection(name) {
         await loadUserBranches();
         await loadUsers();
       });
+      bind("nav-branches", "click", async () => { setActiveNav("nav-branches");
+        showSection("branches");
+        await loadBranches();
+      });
       bind("nav-licenses", "click", async () => { setActiveNav("nav-licenses");
         showSection("licenses");
         await loadLicenseBackends();
@@ -2564,6 +2788,7 @@ function showSection(name) {
       wireNavHover(byId("nav-dashboard"));
       wireNavHover(byId("nav-monitoring"));
       wireNavHover(byId("nav-users"));
+      wireNavHover(byId("nav-branches"));
       wireNavHover(byId("nav-licenses"));
       wireNavHover(byId("export_pdf_btn"));
       wireNavHover(byId("export_xlsx_btn"));
@@ -2645,6 +2870,9 @@ function showSection(name) {
       bind("user_save_btn", "click", saveUser);
       bind("user_cancel_btn", "click", resetUserForm);
       bind("users-body", "click", handleUsersTableClick);
+      bind("branch_save_btn", "click", saveBranch);
+      bind("branch_cancel_btn", "click", resetBranchForm);
+      bind("branches-body", "click", handleBranchesTableClick);
 
       await loadAuthContext();
       applyRoleUi();

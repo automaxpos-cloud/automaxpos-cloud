@@ -55,6 +55,7 @@ router.post("/bootstrap", async (req, res) => {
     const {
       business_name,
       branch_name,
+      branches,
       admin_full_name,
       username,
       password,
@@ -67,8 +68,42 @@ router.post("/bootstrap", async (req, res) => {
     if (!business_name) {
       return res.status(400).json({ ok: false, message: "Business name is required", code: "BUSINESS_REQUIRED" });
     }
-    if (!branch_name) {
-      return res.status(400).json({ ok: false, message: "Branch name is required", code: "BRANCH_REQUIRED" });
+    const branchList = Array.isArray(branches) ? branches : null;
+    const normalizedBranches = [];
+    if (branchList && branchList.length) {
+      for (const b of branchList) {
+        const name = String(b?.name || "").trim();
+        if (!name) {
+          return res.status(400).json({ ok: false, message: "Branch name is required", code: "BRANCH_REQUIRED" });
+        }
+        normalizedBranches.push({
+          name,
+          code: String(b?.code || "").trim() || null,
+          phone: String(b?.phone || "").trim() || null,
+          email: String(b?.email || "").trim() || null,
+          address: String(b?.address || "").trim() || null,
+          city: String(b?.city || "").trim() || null,
+          manager_name: String(b?.manager_name || "").trim() || null,
+          status: String(b?.status || "ACTIVE").trim().toUpperCase() === "INACTIVE" ? "INACTIVE" : "ACTIVE"
+        });
+      }
+    } else if (branch_name) {
+      const name = String(branch_name).trim();
+      if (!name) {
+        return res.status(400).json({ ok: false, message: "Branch name is required", code: "BRANCH_REQUIRED" });
+      }
+      normalizedBranches.push({
+        name,
+        code: null,
+        phone: null,
+        email: null,
+        address: null,
+        city: null,
+        manager_name: null,
+        status: "ACTIVE"
+      });
+    } else {
+      return res.status(400).json({ ok: false, message: "At least one branch is required", code: "BRANCH_REQUIRED" });
     }
     if (!admin_full_name) {
       return res.status(400).json({ ok: false, message: "Admin full name is required", code: "ADMIN_NAME_REQUIRED" });
@@ -105,12 +140,23 @@ router.post("/bootstrap", async (req, res) => {
         [String(business_name).trim(), String(admin_full_name).trim(), email || null, phone || null]
       );
       const businessId = b.rows[0].id;
-      console.log("[SETUP] creating branch");
-      const br = await client.query(
-        "INSERT INTO branches (business_id, name, location) VALUES ($1,$2,$3) RETURNING id",
-        [businessId, String(branch_name).trim(), null]
-      );
-      const branchId = br.rows[0].id;
+      console.log("[SETUP] creating branches");
+      let branchId = null;
+      let branchName = null;
+      for (const b of normalizedBranches) {
+        const location = b.address || b.city || null;
+        const br = await client.query(
+          `INSERT INTO branches
+           (business_id, name, code, phone, email, address, city, manager_name, status, location, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+           RETURNING id, name`,
+          [businessId, b.name, b.code, b.phone, b.email, b.address, b.city, b.manager_name, b.status, location]
+        );
+        if (!branchId) {
+          branchId = br.rows[0].id;
+          branchName = br.rows[0].name;
+        }
+      }
       console.log("[SETUP] creating first user");
       const u = await client.query(
         `INSERT INTO cloud_users
@@ -127,7 +173,7 @@ router.post("/bootstrap", async (req, res) => {
         business_id: businessId,
         branch_id: branchId,
         business_name: String(business_name).trim(),
-        branch_name: String(branch_name).trim(),
+        branch_name: String(branchName || "").trim(),
         owner_name: String(admin_full_name).trim(),
         created_at: new Date().toISOString()
       });
@@ -274,6 +320,23 @@ router.get("/", (req, res) => {
     .light input { background: #f2f4f9; color: #111; border-color: #d9deea; }
     .light .muted { color: #4b5563; }
     .light .toggle { color: #4b5563; border-color: #d9deea; }
+    .branch-block {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 10px;
+      background: rgba(0,0,0,0.12);
+    }
+    .branch-header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .branch-remove {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .branch-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
   </style>
 </head>
 <body>
@@ -295,17 +358,26 @@ router.get("/", (req, res) => {
     </div>
 
     <div class="card">
-      <h3>Step 1: Business & Branch</h3>
+      <h3>Step 1: Business Details</h3>
       <label>Business Name</label>
       <input id="business_name" placeholder="Your Business Name"/>
-      <label>Branch Name</label>
-      <input id="branch_name" placeholder="Main Branch"/>
+      <label>Owner/Admin Name</label>
+      <input id="admin_full_name" placeholder="Full Name"/>
+      <label>Email</label>
+      <input id="email" placeholder="email@example.com"/>
+      <label>Phone</label>
+      <input id="phone" placeholder="+260..."/>
     </div>
 
     <div class="card">
-      <h3>Step 2: Admin Account</h3>
-      <label>Admin Full Name</label>
-      <input id="admin_full_name" placeholder="Full Name"/>
+      <h3>Step 2: Branches</h3>
+      <div id="branch-list"></div>
+      <button class="toggle" id="add_branch_btn" type="button">Add Another Branch</button>
+      <div class="muted" style="margin-top:8px;">At least one branch is required.</div>
+    </div>
+
+    <div class="card">
+      <h3>Step 3: Admin Account</h3>
       <label>Username</label>
       <input id="username" placeholder="admin"/>
       <label>Password</label>
@@ -323,10 +395,6 @@ router.get("/", (req, res) => {
         <input id="remember" type="checkbox"/>
         <label for="remember">Remember me</label>
       </div>
-      <label>Email (optional)</label>
-      <input id="email" placeholder="email@example.com"/>
-      <label>Phone (optional)</label>
-      <input id="phone" placeholder="+260..."/>
     </div>
 
     <button id="submit">Create Account</button>
@@ -394,19 +462,92 @@ router.get("/", (req, res) => {
       localStorage.setItem("automax-theme", theme);
     }
 
+    var branchCounter = 0;
+
+    function buildBranchBlock(data) {
+      var branch = data || {};
+      var container = document.createElement("div");
+      container.className = "branch-block";
+      container.dataset.index = String(branchCounter++);
+      container.innerHTML =
+        "<div class='branch-header'>" +
+        "<strong>Branch</strong>" +
+        "<button class='branch-remove' type='button'>Remove</button>" +
+        "</div>" +
+        "<div class='branch-grid'>" +
+        "<div><label>Branch Name</label><input data-field='name' placeholder='Main Branch' value='" + (branch.name || "") + "' /></div>" +
+        "<div><label>Branch Code (optional)</label><input data-field='code' placeholder='BR-01' value='" + (branch.code || "") + "' /></div>" +
+        "<div><label>Phone</label><input data-field='phone' placeholder='+260...' value='" + (branch.phone || "") + "' /></div>" +
+        "<div><label>Email (optional)</label><input data-field='email' placeholder='branch@email.com' value='" + (branch.email || "") + "' /></div>" +
+        "<div><label>Address</label><input data-field='address' placeholder='Address' value='" + (branch.address || "") + "' /></div>" +
+        "<div><label>City / Town</label><input data-field='city' placeholder='City' value='" + (branch.city || "") + "' /></div>" +
+        "<div><label>Manager Name (optional)</label><input data-field='manager_name' placeholder='Manager' value='" + (branch.manager_name || "") + "' /></div>" +
+        "<div><label>Status</label>" +
+        "<select data-field='status'>" +
+        "<option value='ACTIVE'" + ((branch.status || "ACTIVE") === "ACTIVE" ? " selected" : "") + ">Active</option>" +
+        "<option value='INACTIVE'" + ((branch.status || "") === "INACTIVE" ? " selected" : "") + ">Inactive</option>" +
+        "</select></div>" +
+        "</div>";
+
+      var removeBtn = container.querySelector(".branch-remove");
+      removeBtn.addEventListener("click", function () {
+        var list = document.getElementById("branch-list");
+        if (list && list.children.length > 1) {
+          container.remove();
+        }
+      });
+      return container;
+    }
+
+    function addBranch() {
+      var list = document.getElementById("branch-list");
+      if (!list) return;
+      list.appendChild(buildBranchBlock({ status: "ACTIVE" }));
+    }
+
+    function collectBranches() {
+      var list = document.getElementById("branch-list");
+      if (!list) return [];
+      var blocks = list.querySelectorAll(".branch-block");
+      var branches = [];
+      blocks.forEach(function (block) {
+        var get = function (field) {
+          var el = block.querySelector("[data-field='" + field + "']");
+          return el ? String(el.value || "").trim() : "";
+        };
+        var name = get("name");
+        if (!name) return;
+        branches.push({
+          name: name,
+          code: get("code") || null,
+          phone: get("phone") || null,
+          email: get("email") || null,
+          address: get("address") || null,
+          city: get("city") || null,
+          manager_name: get("manager_name") || null,
+          status: get("status") || "ACTIVE"
+        });
+      });
+      return branches;
+    }
+
     document.getElementById("submit").addEventListener("click", async function () {
       var business_name = document.getElementById("business_name").value.trim();
-      var branch_name = document.getElementById("branch_name").value.trim();
       var admin_full_name = document.getElementById("admin_full_name").value.trim();
       var username = document.getElementById("username").value.trim();
       var password = document.getElementById("password").value;
       var password2 = document.getElementById("password2").value;
       var email = document.getElementById("email").value.trim();
       var phone = document.getElementById("phone").value.trim();
+      var branches = collectBranches();
       var status = document.getElementById("status");
 
-      if (!business_name || !branch_name || !admin_full_name || !username || !password) {
+      if (!business_name || !admin_full_name || !username || !password) {
         status.textContent = "Please fill all required fields.";
+        return;
+      }
+      if (!branches.length) {
+        status.textContent = "Please add at least one branch.";
         return;
       }
       if (password !== password2) {
@@ -418,7 +559,16 @@ router.get("/", (req, res) => {
       var res = await fetch("/api/cloud/setup/bootstrap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ business_name: business_name, branch_name: branch_name, admin_full_name: admin_full_name, username: username, password: password, password2: password2, email: email, phone: phone })
+        body: JSON.stringify({
+          business_name: business_name,
+          admin_full_name: admin_full_name,
+          username: username,
+          password: password,
+          password2: password2,
+          email: email,
+          phone: phone,
+          branches: branches
+        })
       });
       var rawText = await res.text();
       var data = {};
@@ -447,6 +597,8 @@ router.get("/", (req, res) => {
     toggleInput("password", "togglePassword");
     toggleInput("password2", "togglePassword2");
     loadRemember();
+    addBranch();
+    document.getElementById("add_branch_btn").addEventListener("click", addBranch);
     var savedTheme = localStorage.getItem("automax-theme") || "dark";
     applyTheme(savedTheme);
   </script>
