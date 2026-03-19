@@ -1938,12 +1938,20 @@ function showSection(name) {
       const msg = byId("branch_status_msg");
       const role = String(state.user?.role || "");
       const isSuper = role === "SUPERADMIN" || role === "SUPER_ADMIN";
-      const selectedBusiness = byId("filter_business")?.value || "";
+      const businessSelect = byId("filter_business");
+      let selectedBusiness = businessSelect?.value || "";
       const id = byId("branch_edit_id")?.value || "";
       const name = byId("branch_name")?.value.trim() || "";
       if (!name) {
         if (msg) msg.textContent = "Branch name is required.";
         return;
+      }
+      if (isSuper && !selectedBusiness && businessSelect) {
+        const first = Array.from(businessSelect.options || []).find((opt) => opt.value);
+        if (first) {
+          businessSelect.value = first.value;
+          selectedBusiness = first.value;
+        }
       }
       if (isSuper && !selectedBusiness) {
         if (msg) msg.textContent = "Select a business first.";
