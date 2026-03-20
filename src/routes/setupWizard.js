@@ -93,6 +93,14 @@ router.post("/bootstrap", async (req, res) => {
   }
   try {
     console.log("[SETUP] bootstrap request received");
+    console.log("[SETUP] payload", {
+      business_name: req.body?.business_name,
+      admin_full_name: req.body?.admin_full_name,
+      username: req.body?.username,
+      email: req.body?.email,
+      phone: req.body?.phone,
+      branches_count: Array.isArray(req.body?.branches) ? req.body.branches.length : 0
+    });
     const {
       business_name,
       branch_name,
@@ -239,7 +247,7 @@ router.post("/bootstrap", async (req, res) => {
       });
     } catch (err) {
       await client.query("ROLLBACK");
-      console.error("[SETUP] bootstrap error:", err);
+      console.error("[SETUP] bootstrap error:", err?.message || err, err?.stack || "");
       if (err && err.code === "42P01") {
         return res.status(500).json({
           ok: false,
@@ -261,15 +269,15 @@ router.post("/bootstrap", async (req, res) => {
       }
       return res.status(500).json({
         ok: false,
-        message: "Server error",
+        message: err?.message || "Server error",
         code: "SERVER_ERROR"
       });
     } finally {
       client.release();
     }
   } catch (err) {
-    console.error("[SETUP] bootstrap fatal:", err);
-    return res.status(500).json({ ok: false, message: "Server error", code: "SERVER_ERROR" });
+    console.error("[SETUP] bootstrap fatal:", err?.message || err, err?.stack || "");
+    return res.status(500).json({ ok: false, message: err?.message || "Server error", code: "SERVER_ERROR" });
   }
 });
 
@@ -518,7 +526,7 @@ router.get("/", async (req, res) => {
       </div>
     </div>
 
-    <button id="submit">Create Account</button>
+    <button id="submit" type="button">Create Account</button>
     <div id="status" class="muted"></div>
   </div>
 
@@ -653,7 +661,8 @@ router.get("/", async (req, res) => {
       return branches;
     }
 
-    document.getElementById("submit").addEventListener("click", async function () {
+    document.getElementById("submit").addEventListener("click", async function (ev) {
+      ev.preventDefault();
       var business_name = document.getElementById("business_name").value.trim();
       var admin_full_name = document.getElementById("admin_full_name").value.trim();
       var username = document.getElementById("username").value.trim();
@@ -677,35 +686,50 @@ router.get("/", async (req, res) => {
         return;
       }
       saveRemember();
-      status.textContent = "Creating account...";
-      var res = await fetch("/api/cloud/setup/bootstrap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          business_name: business_name,
-          admin_full_name: admin_full_name,
-          username: username,
-          password: password,
-          password2: password2,
-          email: email,
-          phone: phone,
-          branches: branches
-        })
+      console.log("[SETUP_UI] submit", {
+        url: "/api/cloud/setup/bootstrap",
+        business_name: business_name,
+        admin_full_name: admin_full_name,
+        username: username,
+        email: email,
+        phone: phone,
+        branches_count: branches.length
       });
-      var rawText = await res.text();
-      var data = {};
-      try { data = JSON.parse(rawText); } catch (e) { data = {}; }
-      if (!res.ok) {
-        if (data && data.message) {
-          status.textContent = data.message;
-        } else if (rawText) {
-          status.textContent = rawText;
-        } else {
-          status.textContent = "Setup failed. Please check server logs.";
+      status.textContent = "Creating account...";
+      try {
+        var res = await fetch("/api/cloud/setup/bootstrap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            business_name: business_name,
+            admin_full_name: admin_full_name,
+            username: username,
+            password: password,
+            password2: password2,
+            email: email,
+            phone: phone,
+            branches: branches
+          })
+        });
+        var rawText = await res.text();
+        var data = {};
+        try { data = JSON.parse(rawText); } catch (e) { data = {}; }
+        console.log("[SETUP_UI] response", { status: res.status, data: data });
+        if (!res.ok) {
+          if (data && data.message) {
+            status.textContent = data.message;
+          } else if (rawText) {
+            status.textContent = rawText;
+          } else {
+            status.textContent = "Setup failed. Please check server logs.";
+          }
+          return;
         }
-        return;
+        window.location.href = "/setup/success";
+      } catch (err) {
+        console.error("[SETUP_UI] request failed", err);
+        status.textContent = "Setup failed. Network error.";
       }
-      window.location.href = "/setup/success";
     });
 
     document.getElementById("password").addEventListener("input", updateMatch);
