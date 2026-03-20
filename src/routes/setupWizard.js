@@ -26,6 +26,26 @@ function writeLink(data) {
   fs.writeFileSync(LINK_FILE, JSON.stringify(data || {}, null, 2), "utf-8");
 }
 
+function normalizeBranchPrefix(city) {
+  const raw = String(city || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!raw) return "BR";
+  let prefix = raw.slice(0, 3);
+  if (prefix.length === 1) prefix = prefix + "XX";
+  if (prefix.length === 2) prefix = prefix + "X";
+  return prefix;
+}
+
+async function getNextBranchSequence(db, businessId, prefix) {
+  const regex = `^${prefix}-([0-9]+)$`;
+  const res = await db.query(
+    `SELECT MAX(CAST(SUBSTRING(code FROM $2) AS INT)) AS max_seq
+     FROM branches
+     WHERE business_id = $1 AND code ~ $2`,
+    [businessId, regex]
+  );
+  return Number(res.rows?.[0]?.max_seq || 0) + 1;
+}
+
 router.get("/status", async (_req, res) => {
   if (NODE_ENV === "production") {
     return res.status(404).json({ ok: false, message: "Setup disabled in production", code: "SETUP_DISABLED" });
@@ -143,14 +163,25 @@ router.post("/bootstrap", async (req, res) => {
       console.log("[SETUP] creating branches");
       let branchId = null;
       let branchName = null;
+      const codeSequences = new Map();
       for (const b of normalizedBranches) {
         const location = b.address || b.city || null;
+        let code = b.code;
+        if (!code) {
+          const prefix = normalizeBranchPrefix(b.city || "");
+          let next = codeSequences.get(prefix);
+          if (!next) {
+            next = await getNextBranchSequence(client, businessId, prefix);
+          }
+          code = `${prefix}-${String(next).padStart(3, "0")}`;
+          codeSequences.set(prefix, next + 1);
+        }
         const br = await client.query(
           `INSERT INTO branches
            (business_id, name, code, phone, email, address, city, manager_name, status, location, updated_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
            RETURNING id, name`,
-          [businessId, b.name, b.code, b.phone, b.email, b.address, b.city, b.manager_name, b.status, location]
+          [businessId, b.name, code, b.phone, b.email, b.address, b.city, b.manager_name, b.status, location]
         );
         if (!branchId) {
           branchId = br.rows[0].id;

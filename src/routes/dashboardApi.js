@@ -838,6 +838,29 @@ function normalizeBranchStatus(value) {
   return "ACTIVE";
 }
 
+function normalizeBranchPrefix(city) {
+  const raw = String(city || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!raw) return "BR";
+  let prefix = raw.slice(0, 3);
+  if (prefix.length === 1) prefix = prefix + "XX";
+  if (prefix.length === 2) prefix = prefix + "X";
+  return prefix;
+}
+
+async function getNextBranchCode(db, businessId, city) {
+  const prefix = normalizeBranchPrefix(city);
+  const regex = `^${prefix}-([0-9]+)$`;
+  const res = await db.query(
+    `SELECT MAX(CAST(SUBSTRING(code FROM $2) AS INT)) AS max_seq
+     FROM branches
+     WHERE business_id = $1 AND code ~ $2`,
+    [businessId, regex]
+  );
+  const next = Number(res.rows?.[0]?.max_seq || 0) + 1;
+  const code = `${prefix}-${String(next).padStart(3, "0")}`;
+  return code;
+}
+
 router.post("/branches", authUser, async (req, res) => {
   try {
     const role = String(req.user?.role || "").toUpperCase();
@@ -850,7 +873,7 @@ router.post("/branches", authUser, async (req, res) => {
     const name = String(req.body?.name || "").trim();
     if (!name) return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "Branch name required" });
 
-    const code = String(req.body?.code || "").trim() || null;
+    let code = String(req.body?.code || "").trim() || null;
     const phone = String(req.body?.phone || "").trim() || null;
     const email = String(req.body?.email || "").trim() || null;
     const address = String(req.body?.address || "").trim() || null;
@@ -858,6 +881,9 @@ router.post("/branches", authUser, async (req, res) => {
     const manager_name = String(req.body?.manager_name || "").trim() || null;
     const status = normalizeBranchStatus(req.body?.status);
     const location = address || city || null;
+    if (!code) {
+      code = await getNextBranchCode(pool, businessId, city);
+    }
 
     const result = await pool.query(
       `INSERT INTO branches
