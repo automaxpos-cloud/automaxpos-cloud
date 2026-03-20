@@ -373,7 +373,17 @@ router.get("/", async (req, res) => {
     .match { margin-top: 6px; font-size: 13px; }
     .match.ok { color: var(--good); }
     .match.bad { color: var(--bad); }
-    .remember { margin-top: 10px; display:flex; gap:8px; align-items:center; color: var(--muted); }
+    .remember {
+      margin-top: 10px;
+      display:flex;
+      gap:8px;
+      align-items:center;
+      color: var(--muted);
+      justify-content: flex-start;
+      width: 100%;
+    }
+    .remember input { margin: 0; }
+    .remember label { margin: 0; }
     .theme-toggle {
       display: inline-flex;
       align-items: center;
