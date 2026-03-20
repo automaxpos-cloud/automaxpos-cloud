@@ -15,7 +15,12 @@ async function isSetupAllowed() {
   if (ENABLE_SETUP_WIZARD) return true;
   try {
     const userCount = await pool.query("SELECT COUNT(*) AS c FROM cloud_users");
-    return Number(userCount.rows?.[0]?.c || 0) === 0;
+    const businessCount = await pool.query("SELECT COUNT(*) AS c FROM businesses");
+    const branchCount = await pool.query("SELECT COUNT(*) AS c FROM branches");
+    const users = Number(userCount.rows?.[0]?.c || 0);
+    const businesses = Number(businessCount.rows?.[0]?.c || 0);
+    const branches = Number(branchCount.rows?.[0]?.c || 0);
+    return users === 0 || businesses === 0 || branches === 0;
   } catch (err) {
     console.error("[SETUP] setup allowed check failed:", err);
     return false;
@@ -424,6 +429,22 @@ router.get("/", async (req, res) => {
       display: block;
     }
     .branch-spacer { visibility: hidden; }
+    .setup-compact {
+      max-width: 760px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .setup-compact .row {
+      flex-wrap: wrap;
+    }
+    .setup-compact .row input {
+      flex: 1 1 260px;
+      min-width: 220px;
+    }
+    .setup-compact .row button {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
     @media (max-width: 900px) {
       .branch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .branch-spacer { display: none; }
@@ -471,7 +492,7 @@ router.get("/", async (req, res) => {
       <div class="muted" style="margin-top:8px;">At least one branch is required.</div>
     </div>
 
-    <div class="card">
+    <div class="card setup-compact">
       <h3>Step 3: Admin Account</h3>
       <label>Username</label>
       <input id="username" placeholder="admin"/>
