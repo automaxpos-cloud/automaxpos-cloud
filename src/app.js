@@ -58,10 +58,8 @@ app.use("/api/cloud/licenses", licenseAdminApi);
 app.use("/api/admin", adminApi);
 app.use("/api/payments", rateLimit({ windowMs: 60_000, max: 30 }), paymentIngest);
 app.use("/api/public", publicApi);
-if (NODE_ENV !== "production") {
-  app.use("/api/cloud/setup", setupWizard);
-  app.use("/setup", setupWizard);
-}
+app.use("/api/cloud/setup", setupWizard);
+app.use("/setup", setupWizard);
 app.use("/dashboard", dashboardPage);
 app.use("/login", dashboardPage);
 app.use("/api/dashboard", dashboardApi);
