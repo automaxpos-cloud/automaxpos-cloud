@@ -8,6 +8,20 @@ const { pool } = require("../db/pool");
 const router = express.Router();
 const { NODE_ENV } = require("../config/env");
 
+const ENABLE_SETUP_WIZARD = String(process.env.ENABLE_SETUP_WIZARD || "").toLowerCase() === "true";
+
+async function isSetupAllowed() {
+  if (NODE_ENV !== "production") return true;
+  if (ENABLE_SETUP_WIZARD) return true;
+  try {
+    const userCount = await pool.query("SELECT COUNT(*) AS c FROM cloud_users");
+    return Number(userCount.rows?.[0]?.c || 0) === 0;
+  } catch (err) {
+    console.error("[SETUP] setup allowed check failed:", err);
+    return false;
+  }
+}
+
 const APPDATA_DIR = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
 const LINK_DIR = path.join(APPDATA_DIR, "AutoMaxPOS");
 const LINK_FILE = path.join(LINK_DIR, "cloud_setup.json");
@@ -47,7 +61,8 @@ async function getNextBranchSequence(db, businessId, prefix) {
 }
 
 router.get("/status", async (_req, res) => {
-  if (NODE_ENV === "production") {
+  const allowed = await isSetupAllowed();
+  if (!allowed) {
     return res.status(404).json({ ok: false, message: "Setup disabled in production", code: "SETUP_DISABLED" });
   }
   try {
@@ -67,7 +82,8 @@ router.get("/status", async (_req, res) => {
 });
 
 router.post("/bootstrap", async (req, res) => {
-  if (NODE_ENV === "production") {
+  const allowed = await isSetupAllowed();
+  if (!allowed) {
     return res.status(404).json({ ok: false, message: "Setup disabled in production", code: "SETUP_DISABLED" });
   }
   try {
@@ -252,11 +268,15 @@ router.post("/bootstrap", async (req, res) => {
   }
 });
 
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   const link = readLink();
   const already = !!(link && link.business_id && link.branch_id);
   if (already) {
     return res.redirect("/dashboard");
+  }
+  const allowed = await isSetupAllowed();
+  if (!allowed) {
+    return res.status(404).json({ ok: false, message: "Setup disabled in production", code: "SETUP_DISABLED" });
   }
   res.type("html").send(`<!doctype html>
 <html>
@@ -282,9 +302,10 @@ router.get("/", (req, res) => {
       color: var(--text);
     }
     .page {
-      max-width: 860px;
+      max-width: 1400px;
+      width: min(1400px, 100%);
       margin: 0 auto;
-      padding: 36px 20px 60px;
+      padding: 36px 32px 60px;
     }
     .topbar {
       display: flex;
@@ -310,6 +331,21 @@ router.get("/", (req, res) => {
       border: 1px solid var(--border);
       background: #0d1526;
       color: var(--text);
+    }
+    select {
+      width: 100%;
+      padding: 10px;
+      margin-top: 6px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0d1526;
+      color: var(--text);
+    }
+    .branch-grid input,
+    .branch-grid select {
+      width: 100%;
+      box-sizing: border-box;
+      display: block;
     }
     button {
       margin-top: 12px;
@@ -358,7 +394,7 @@ router.get("/", (req, res) => {
       margin-top: 10px;
       background: rgba(0,0,0,0.12);
     }
-    .branch-header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .branch-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 8px; }
     .branch-remove {
       background: transparent;
       color: var(--muted);
@@ -367,7 +403,35 @@ router.get("/", (req, res) => {
       border-radius: 8px;
       cursor: pointer;
     }
-    .branch-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+    .branch-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+    .branch-field {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .branch-field label { display:block; }
+    .branch-field input,
+    .branch-field select {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      display: block;
+    }
+    .branch-spacer { visibility: hidden; }
+    @media (max-width: 900px) {
+      .branch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .branch-spacer { display: none; }
+    }
+    @media (max-width: 600px) {
+      .branch-grid { grid-template-columns: 1fr; }
+      .branch-spacer { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -506,18 +570,19 @@ router.get("/", (req, res) => {
         "<button class='branch-remove' type='button'>Remove</button>" +
         "</div>" +
         "<div class='branch-grid'>" +
-        "<div><label>Branch Name</label><input data-field='name' placeholder='Main Branch' value='" + (branch.name || "") + "' /></div>" +
-        "<div><label>Branch Code (optional)</label><input data-field='code' placeholder='BR-01' value='" + (branch.code || "") + "' /></div>" +
-        "<div><label>Phone</label><input data-field='phone' placeholder='+260...' value='" + (branch.phone || "") + "' /></div>" +
-        "<div><label>Email (optional)</label><input data-field='email' placeholder='branch@email.com' value='" + (branch.email || "") + "' /></div>" +
-        "<div><label>Address</label><input data-field='address' placeholder='Address' value='" + (branch.address || "") + "' /></div>" +
-        "<div><label>City / Town</label><input data-field='city' placeholder='City' value='" + (branch.city || "") + "' /></div>" +
-        "<div><label>Manager Name (optional)</label><input data-field='manager_name' placeholder='Manager' value='" + (branch.manager_name || "") + "' /></div>" +
-        "<div><label>Status</label>" +
+        "<div class='branch-field'><label>Branch Name</label><input data-field='name' placeholder='Main Branch' value='" + (branch.name || "") + "' /></div>" +
+        "<div class='branch-field'><label>Branch Code (auto)</label><input data-field='code' placeholder='Auto-generated' value='" + (branch.code || "") + "' readonly /></div>" +
+        "<div class='branch-field'><label>Phone</label><input data-field='phone' placeholder='+260...' value='" + (branch.phone || "") + "' /></div>" +
+        "<div class='branch-field'><label>Email (optional)</label><input data-field='email' placeholder='branch@email.com' value='" + (branch.email || "") + "' /></div>" +
+        "<div class='branch-field'><label>Address</label><input data-field='address' placeholder='Address' value='" + (branch.address || "") + "' /></div>" +
+        "<div class='branch-field'><label>City / Town</label><input data-field='city' placeholder='City' value='" + (branch.city || "") + "' /></div>" +
+        "<div class='branch-field'><label>Manager Name (optional)</label><input data-field='manager_name' placeholder='Manager' value='" + (branch.manager_name || "") + "' /></div>" +
+        "<div class='branch-field'><label>Status</label>" +
         "<select data-field='status'>" +
         "<option value='ACTIVE'" + ((branch.status || "ACTIVE") === "ACTIVE" ? " selected" : "") + ">Active</option>" +
         "<option value='INACTIVE'" + ((branch.status || "") === "INACTIVE" ? " selected" : "") + ">Inactive</option>" +
         "</select></div>" +
+        "<div class='branch-spacer' aria-hidden='true'></div>" +
         "</div>";
 
       var removeBtn = container.querySelector(".branch-remove");
