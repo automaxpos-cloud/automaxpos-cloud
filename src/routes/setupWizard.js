@@ -439,11 +439,6 @@ router.get("/", async (req, res) => {
       display: block;
     }
     .branch-spacer { visibility: hidden; }
-    .setup-compact {
-      max-width: 760px;
-      margin-left: auto;
-      margin-right: auto;
-    }
     .setup-compact .row {
       flex-wrap: wrap;
     }
