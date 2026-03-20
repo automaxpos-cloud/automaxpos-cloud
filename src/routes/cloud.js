@@ -84,6 +84,7 @@ function adminOrLocalSetup(req, res, next) {
 // Registration (admin auth or local setup)
 router.post("/businesses", adminJwt, registrationController.createBusiness);
 router.post("/branches", adminJwt, registrationController.createBranch);
+router.get("/branches", auth, registrationController.listBranchesForBackend);
 router.post("/backends/register", rateLimit({ windowMs: 60_000, max: 10 }), adminOrLocalSetup, registrationController.registerBackend);
 router.post("/backends/rotate-token", auth, registrationController.rotateBackendToken);
 

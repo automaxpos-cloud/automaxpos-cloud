@@ -41,6 +41,28 @@ async function createBranch(req, res) {
   return res.json({ ok: true, branch_id: result.rows[0].id, business_id });
 }
 
+async function listBranchesForBackend(req, res) {
+  try {
+    const backend = req.backend || {};
+    const businessId = backend.business_id || null;
+    if (!businessId) {
+      return res.status(400).json({ ok: false, error: "BUSINESS_REQUIRED" });
+    }
+    const onlyActive = String(req.query?.status || "").toUpperCase() === "ACTIVE";
+    const rows = await query(
+      `SELECT id, business_id, name, code, phone, email, address, city, manager_name, status
+       FROM branches
+       WHERE business_id = $1
+         AND ($2::boolean IS FALSE OR COALESCE(status,'ACTIVE') = 'ACTIVE')
+       ORDER BY name ASC`,
+      [businessId, onlyActive]
+    );
+    return res.json({ ok: true, branches: rows.rows || [] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: "SERVER_ERROR" });
+  }
+}
+
 let _backendDeviceCols = null;
 async function getBackendDeviceColumns() {
   if (_backendDeviceCols) return _backendDeviceCols;
@@ -247,4 +269,4 @@ async function rotateBackendToken(req, res) {
   }
 }
 
-module.exports = { createBusiness, createBranch, registerBackend, rotateBackendToken };
+module.exports = { createBusiness, createBranch, listBranchesForBackend, registerBackend, rotateBackendToken };
