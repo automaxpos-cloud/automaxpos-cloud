@@ -307,8 +307,8 @@ router.get("/", async (req, res) => {
       color: var(--text);
     }
     .page {
-      max-width: 1400px;
-      width: min(1400px, 100%);
+      max-width: 1100px;
+      width: min(1100px, 100%);
       margin: 0 auto;
       padding: 36px 32px 60px;
     }
