@@ -19,6 +19,8 @@ const adminApi = require("./routes/adminApi");
 const setupWizard = require("./routes/setupWizard");
 const adminPage = require("./routes/adminPage");
 const publicApi = require("./routes/publicApi");
+const demoApi = require("./routes/demo");
+const securityApi = require("./routes/security");
 const paymentIngest = require("./routes/paymentIngest");
 const { rateLimit } = require("./middleware/rateLimiter");
 
@@ -58,6 +60,8 @@ app.use("/api/cloud/licenses", licenseAdminApi);
 app.use("/api/admin", adminApi);
 app.use("/api/payments", rateLimit({ windowMs: 60_000, max: 30 }), paymentIngest);
 app.use("/api/public", publicApi);
+app.use("/api/demo", demoApi);
+app.use("/api/security", securityApi);
 app.use("/api/cloud/setup", setupWizard);
 app.use("/setup", setupWizard);
 app.use("/dashboard", dashboardPage);

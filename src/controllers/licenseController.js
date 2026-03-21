@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { pool } = require("../db/pool");
 const licenseService = require("../services/licenseService");
 const { notifyLicenseRequestCreated } = require("../services/licenseRequestNotificationService");
+const deviceFingerprintService = require("../services/deviceFingerprintService");
 
 function toEpochSeconds(value) {
   if (!value) return null;
@@ -509,6 +510,18 @@ async function pull(req, res) {
       backendName: identity.backend_name,
       deviceId: identity.installation_id
     });
+    const fpHash = String(req.query.fingerprint_hash || "").trim();
+    if (fpHash && lic?.license_id) {
+      try {
+        await deviceFingerprintService.recordFingerprint({
+          backend_id: backend.id,
+          license_id: lic.license_id,
+          fingerprint_hash: fpHash,
+          hostname: req.query.hostname || null,
+          platform: req.query.platform || null
+        });
+      } catch (_) {}
+    }
     if (!lic) {
       // eslint-disable-next-line no-console
       console.log("[LICENSE] pull no active license", { backend_id: backend.id });

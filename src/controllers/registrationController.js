@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const { query } = require("../db/pool");
 const { v4: uuidv4 } = require("uuid");
+const deviceFingerprintService = require("../services/deviceFingerprintService");
 
 function generateApiKey() {
   return uuidv4().replace(/-/g, "") + uuidv4().replace(/-/g, "");
@@ -84,7 +85,10 @@ async function registerBackend(req, res) {
       device_fingerprint,
       app_version,
       installation_id,
-      device_secret
+      device_secret,
+      fingerprint_hash,
+      hostname,
+      platform
     } = req.body || {};
     if (!business_id || !branch_id) {
       return res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "business_id and branch_id required" });
@@ -179,6 +183,18 @@ async function registerBackend(req, res) {
       );
       backendId = result.rows[0]?.id || null;
       action = "insert";
+    }
+
+    if (fingerprint_hash) {
+      try {
+        await deviceFingerprintService.recordFingerprint({
+          backend_id: backendId,
+          license_id: null,
+          fingerprint_hash,
+          hostname: hostname || null,
+          platform: platform || null
+        });
+      } catch (_) {}
     }
 
     // eslint-disable-next-line no-console
