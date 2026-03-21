@@ -596,8 +596,8 @@ router.get("/", (req, res) => {
             <input id="branch_name" type="text" placeholder="Head Office" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
           </div>
           <div style="min-width:160px;">
-            <label class="muted">Branch Code</label>
-            <input id="branch_code" type="text" placeholder="BR-01" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
+            <label class="muted">Branch Code (auto)</label>
+            <input id="branch_code" type="text" placeholder="Auto-generated" readonly style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--text);" />
           </div>
           <div style="min-width:180px;">
             <label class="muted">Phone</label>
