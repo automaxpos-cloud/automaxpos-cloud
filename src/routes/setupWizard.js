@@ -221,9 +221,17 @@ router.post("/bootstrap", async (req, res) => {
       const u = await client.query(
         `INSERT INTO cloud_users
          (username, email, password_hash, full_name, role, business_id, branch_id, is_active)
-         VALUES ($1,$2,$3,'BUSINESS_OWNER',$4,$5,TRUE)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE)
          RETURNING id`,
-        [String(username).trim(), email ? String(email).trim().toLowerCase() : null, hash, String(admin_full_name).trim(), businessId, branchId]
+        [
+          String(username).trim(),
+          email ? String(email).trim().toLowerCase() : null,
+          hash,
+          String(admin_full_name).trim(),
+          "BUSINESS_OWNER",
+          businessId,
+          branchId
+        ]
       );
 
       await client.query("COMMIT");
