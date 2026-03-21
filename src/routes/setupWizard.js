@@ -803,6 +803,16 @@ router.get("/success", (_req, res) => {
       color: #fff;
       text-decoration: none;
     }
+    .btn.secondary {
+      background: transparent;
+      color: var(--text);
+    }
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
     ol { margin: 8px 0 0 18px; }
   </style>
 </head>
@@ -810,7 +820,7 @@ router.get("/success", (_req, res) => {
   <div class="page">
     <div class="card">
       <h1>Cloud account created successfully</h1>
-      <div class="muted">Next: Open Local Backend Setup</div>
+      <div class="muted">Next: Sign in to Business Monitor</div>
 
       <div class="label">Business:</div>
       <div class="value">${business}</div>
@@ -824,7 +834,10 @@ router.get("/success", (_req, res) => {
       <div class="label" style="margin-top:12px;">Local Backend URL:</div>
       <div class="value">http://localhost:3000</div>
 
-      <a class="btn" href="http://localhost:3000">Open Local Backend Setup</a>
+      <div class="btn-row">
+        <a class="btn" href="/login">Continue to Sign In</a>
+        <a class="btn secondary" href="http://localhost:3000">Open Local Backend Setup</a>
+      </div>
     </div>
 
     <div class="card">
